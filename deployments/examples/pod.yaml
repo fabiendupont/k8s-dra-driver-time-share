@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: deadline-workload
+spec:
+  containers:
+    - name: workload
+      image: busybox:latest
+      command: ["sh", "-c", "while true; do echo 'running in time slot'; sleep 1; done"]
+      resources:
+        claims:
+          - name: time-slot
+  resourceClaims:
+    - name: time-slot
+      resourceClaimName: my-time-slot

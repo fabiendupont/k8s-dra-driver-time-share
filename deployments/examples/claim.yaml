@@ -1,0 +1,13 @@
+apiVersion: resource.k8s.io/v1beta1
+kind: ResourceClaim
+metadata:
+  name: my-time-slot
+spec:
+  devices:
+    requests:
+      - name: slot
+        deviceClassName: time-share-slots
+        count: 1
+        selectors:
+          - cel:
+              expression: "device.attributes['utilizationMillis'].intValue >= 250"

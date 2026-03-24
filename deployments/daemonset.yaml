@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: dra-time-share
+  namespace: dra-time-share
+spec:
+  selector:
+    matchLabels:
+      app: dra-time-share
+  template:
+    metadata:
+      labels:
+        app: dra-time-share
+    spec:
+      serviceAccountName: dra-time-share
+      containers:
+        - name: driver
+          image: quay.io/fabiendupont/dra-time-share:latest
+          args:
+            - --node-name=$(NODE_NAME)
+            - --cores=0,1,2,3
+            - --period-ms=1
+            - --slot-count=4
+          env:
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          securityContext:
+            privileged: true
+          volumeMounts:
+            - name: kubelet-plugins
+              mountPath: /var/lib/kubelet/plugins
+            - name: kubelet-plugins-registry
+              mountPath: /var/lib/kubelet/plugins_registry
+            - name: cgroup
+              mountPath: /sys/fs/cgroup
+              readOnly: true
+      volumes:
+        - name: kubelet-plugins
+          hostPath:
+            path: /var/lib/kubelet/plugins
+        - name: kubelet-plugins-registry
+          hostPath:
+            path: /var/lib/kubelet/plugins_registry
+        - name: cgroup
+          hostPath:
+            path: /sys/fs/cgroup

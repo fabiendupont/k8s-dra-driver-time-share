@@ -1,0 +1,8 @@
+apiVersion: resource.k8s.io/v1beta1
+kind: DeviceClass
+metadata:
+  name: time-share-slots
+spec:
+  selectors:
+    - cel:
+        expression: "device.driver == 'time-share.fabiendupont.io'"
