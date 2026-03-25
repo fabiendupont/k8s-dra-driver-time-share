@@ -1,4 +1,4 @@
-# k8s-dra-driver-deterministic-time-share
+# k8s-dra-driver-time-share
 
 ## Overview
 

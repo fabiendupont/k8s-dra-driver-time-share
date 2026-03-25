@@ -65,18 +65,3 @@ type NodeConfig struct {
 	// SlotCount is the number of equal time slots per core.
 	SlotCount int
 }
-
-// AllocatedSlot tracks a time slot that has been claimed by a pod.
-type AllocatedSlot struct {
-	TimeSlot
-
-	// ClaimUID is the Kubernetes ResourceClaim UID.
-	ClaimUID string
-
-	// PodUID is the UID of the pod using this claim.
-	PodUID string
-
-	// PIDs tracks the process IDs that have been configured with
-	// SCHED_DEADLINE for this slot.
-	PIDs []int
-}

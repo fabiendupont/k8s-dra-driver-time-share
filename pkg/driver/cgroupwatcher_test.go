@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/fabiendupont/k8s-dra-driver-deterministic-time-share/pkg/timeslot"
+	"github.com/fabiendupont/k8s-dra-driver-time-share/pkg/timeslot"
 )
 
 func TestReadPIDs(t *testing.T) {
@@ -84,12 +84,12 @@ func TestCollectPIDs(t *testing.T) {
 
 	// Child cgroup (like a container scope).
 	childDir := filepath.Join(tmpDir, "container1.scope")
-	os.MkdirAll(childDir, 0755)
+	_ = os.MkdirAll(childDir, 0755)
 	writeProcs(t, childDir, "30\n40\n")
 
 	// Another child.
 	child2Dir := filepath.Join(tmpDir, "container2.scope")
-	os.MkdirAll(child2Dir, 0755)
+	_ = os.MkdirAll(child2Dir, 0755)
 	writeProcs(t, child2Dir, "50\n")
 
 	slot := timeslot.TimeSlot{

@@ -9,7 +9,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 
-	"github.com/fabiendupont/k8s-dra-driver-deterministic-time-share/pkg/timeslot"
+	"github.com/fabiendupont/k8s-dra-driver-time-share/pkg/timeslot"
 )
 
 // SlicePublisher publishes and updates ResourceSlices for time slot devices.
@@ -34,9 +34,15 @@ func NewSlicePublisher(client kubernetes.Interface, driverName, nodeName string,
 func (sp *SlicePublisher) PublishSlices(ctx context.Context, partitions []*timeslot.CorePartition) error {
 	devices := sp.buildDevices(partitions)
 
+	ownerRef, err := sp.nodeOwnerReference(ctx)
+	if err != nil {
+		klog.ErrorS(err, "Could not set Node owner reference on ResourceSlice; slice will not be garbage-collected on node removal")
+	}
+
 	slice := &resourceapi.ResourceSlice{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: fmt.Sprintf("%s-%s", sp.nodeName, sp.driverName),
+			Name:            fmt.Sprintf("%s-%s", sp.nodeName, sp.driverName),
+			OwnerReferences: ownerRef,
 		},
 		Spec: resourceapi.ResourceSliceSpec{
 			Driver:   sp.driverName,
@@ -60,6 +66,10 @@ func (sp *SlicePublisher) PublishSlices(ctx context.Context, partitions []*times
 	}
 
 	slice.ResourceVersion = existing.ResourceVersion
+	// Preserve existing owner references if we failed to fetch the node.
+	if slice.OwnerReferences == nil && len(existing.OwnerReferences) > 0 {
+		slice.OwnerReferences = existing.OwnerReferences
+	}
 	_, err = sp.client.ResourceV1beta1().ResourceSlices().Update(ctx, slice, metav1.UpdateOptions{})
 	if err != nil {
 		return fmt.Errorf("updating ResourceSlice: %w", err)
@@ -102,6 +112,39 @@ func (sp *SlicePublisher) buildDevices(partitions []*timeslot.CorePartition) []r
 	}
 
 	return devices
+}
+
+// SliceName returns the ResourceSlice name for this publisher.
+func (sp *SlicePublisher) SliceName() string {
+	return fmt.Sprintf("%s-%s", sp.nodeName, sp.driverName)
+}
+
+// DeleteSlice removes the ResourceSlice from the API server.
+func (sp *SlicePublisher) DeleteSlice(ctx context.Context) error {
+	name := sp.SliceName()
+	err := sp.client.ResourceV1beta1().ResourceSlices().Delete(ctx, name, metav1.DeleteOptions{})
+	if err != nil {
+		return fmt.Errorf("deleting ResourceSlice %s: %w", name, err)
+	}
+	klog.InfoS("Deleted ResourceSlice", "name", name)
+	return nil
+}
+
+// nodeOwnerReference fetches the Node object and returns an owner reference
+// so the ResourceSlice is garbage-collected when the node is removed.
+func (sp *SlicePublisher) nodeOwnerReference(ctx context.Context) ([]metav1.OwnerReference, error) {
+	node, err := sp.client.CoreV1().Nodes().Get(ctx, sp.nodeName, metav1.GetOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("getting node %s: %w", sp.nodeName, err)
+	}
+	return []metav1.OwnerReference{
+		{
+			APIVersion: "v1",
+			Kind:       "Node",
+			Name:       node.Name,
+			UID:        node.UID,
+		},
+	}, nil
 }
 
 func int64Ptr(v int64) *int64 {

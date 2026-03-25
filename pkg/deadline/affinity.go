@@ -2,7 +2,6 @@ package deadline
 
 import (
 	"fmt"
-	"unsafe"
 
 	"golang.org/x/sys/unix"
 )
@@ -15,14 +14,8 @@ func SetAffinity(pid int, cores []int) error {
 		set.Set(core)
 	}
 
-	_, _, errno := unix.RawSyscall(
-		unix.SYS_SCHED_SETAFFINITY,
-		uintptr(pid),
-		unsafe.Sizeof(set),
-		uintptr(unsafe.Pointer(&set)),
-	)
-	if errno != 0 {
-		return fmt.Errorf("sched_setaffinity(pid=%d, cores=%v): %w", pid, cores, errno)
+	if err := unix.SchedSetaffinity(pid, &set); err != nil {
+		return fmt.Errorf("sched_setaffinity(pid=%d, cores=%v): %w", pid, cores, err)
 	}
 	return nil
 }
@@ -31,14 +24,8 @@ func SetAffinity(pid int, cores []int) error {
 func GetAffinity(pid int) ([]int, error) {
 	var set unix.CPUSet
 
-	_, _, errno := unix.RawSyscall(
-		unix.SYS_SCHED_GETAFFINITY,
-		uintptr(pid),
-		unsafe.Sizeof(set),
-		uintptr(unsafe.Pointer(&set)),
-	)
-	if errno != 0 {
-		return nil, fmt.Errorf("sched_getaffinity(pid=%d): %w", pid, errno)
+	if err := unix.SchedGetaffinity(pid, &set); err != nil {
+		return nil, fmt.Errorf("sched_getaffinity(pid=%d): %w", pid, err)
 	}
 
 	var cores []int

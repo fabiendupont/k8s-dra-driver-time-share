@@ -70,7 +70,7 @@ func (r *Registrar) Serve(ctx context.Context, registryDir string) error {
 	if err := os.MkdirAll(registryDir, 0750); err != nil {
 		return fmt.Errorf("creating registry directory: %w", err)
 	}
-	os.Remove(socketPath) // clean up stale socket
+	_ = os.Remove(socketPath) // clean up stale socket
 
 	listener, err := net.Listen("unix", socketPath)
 	if err != nil {
@@ -84,7 +84,7 @@ func (r *Registrar) Serve(ctx context.Context, registryDir string) error {
 		<-ctx.Done()
 		klog.InfoS("Shutting down registration server")
 		server.GracefulStop()
-		os.Remove(socketPath)
+		_ = os.Remove(socketPath)
 	}()
 
 	klog.InfoS("Registration server listening",

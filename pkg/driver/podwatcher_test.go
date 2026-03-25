@@ -19,7 +19,7 @@ func TestResolveCgroupPathSystemd(t *testing.T) {
 		"kubepods-burstable.slice",
 		"kubepods-burstable-pod"+sanitizedUID+".slice",
 	)
-	os.MkdirAll(systemdPath, 0755)
+	_ = os.MkdirAll(systemdPath, 0755)
 
 	pw := &PodWatcher{cgroupRoot: tmpDir}
 	resolved := pw.resolveCgroupPath(podUID, v1.PodQOSBurstable)
@@ -36,7 +36,7 @@ func TestResolveCgroupPathCgroupfs(t *testing.T) {
 	// Create cgroupfs-style cgroup path.
 	cgroupfsPath := filepath.Join(tmpDir,
 		"kubepods", "guaranteed", "pod"+podUID)
-	os.MkdirAll(cgroupfsPath, 0755)
+	_ = os.MkdirAll(cgroupfsPath, 0755)
 
 	pw := &PodWatcher{cgroupRoot: tmpDir}
 	resolved := pw.resolveCgroupPath(podUID, v1.PodQOSGuaranteed)
@@ -57,7 +57,7 @@ func TestResolveCgroupPathKubeletSlice(t *testing.T) {
 		"kubelet-kubepods-besteffort.slice",
 		"kubelet-kubepods-besteffort-pod"+sanitizedUID+".slice",
 	)
-	os.MkdirAll(kubeletPath, 0755)
+	_ = os.MkdirAll(kubeletPath, 0755)
 
 	pw := &PodWatcher{cgroupRoot: tmpDir}
 	resolved := pw.resolveCgroupPath(podUID, v1.PodQOSBestEffort)

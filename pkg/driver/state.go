@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/fabiendupont/k8s-dra-driver-deterministic-time-share/pkg/timeslot"
+	"github.com/fabiendupont/k8s-dra-driver-time-share/pkg/timeslot"
 )
 
 // SlotState tracks whether a time slot is available or allocated.
@@ -55,6 +55,9 @@ func (a *AllocationState) Allocate(slotID, claimUID string) error {
 		return fmt.Errorf("slot %q not found", slotID)
 	}
 	if s.Allocated {
+		if s.ClaimUID == claimUID {
+			return nil // idempotent: already allocated to this claim
+		}
 		return fmt.Errorf("slot %q already allocated to claim %q", slotID, s.ClaimUID)
 	}
 
@@ -92,6 +95,20 @@ func (a *AllocationState) ReleaseByClaimUID(claimUID string) []string {
 		}
 	}
 	return released
+}
+
+// AllocatedCount returns the number of currently allocated slots.
+func (a *AllocationState) AllocatedCount() int {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	count := 0
+	for _, s := range a.slots {
+		if s.Allocated {
+			count++
+		}
+	}
+	return count
 }
 
 // SlotsByClaimUID returns all slots allocated to a given claim.

@@ -10,4 +10,4 @@ spec:
         count: 1
         selectors:
           - cel:
-              expression: "device.attributes['utilizationMillis'].intValue >= 250"
+              expression: "device.attributes['time-share.fabiendupont.io'].utilizationMillis >= 250"

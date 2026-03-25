@@ -17,7 +17,7 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 
-	"github.com/fabiendupont/k8s-dra-driver-deterministic-time-share/pkg/timeslot"
+	"github.com/fabiendupont/k8s-dra-driver-time-share/pkg/timeslot"
 )
 
 // PodWatcher watches pods on this node for ResourceClaim references,
@@ -29,18 +29,20 @@ type PodWatcher struct {
 	cgroupRoot string
 	state      *AllocationState
 
-	mu       sync.Mutex
-	watchers map[string]*CgroupWatcher // keyed by claimUID
+	mu            sync.Mutex
+	watchers      map[string]*CgroupWatcher // keyed by claimUID
+	claimUIDCache map[string]string         // namespace/name -> UID
 }
 
 // NewPodWatcher creates a watcher that monitors pods on the given node.
 func NewPodWatcher(client kubernetes.Interface, nodeName, cgroupRoot string, state *AllocationState) *PodWatcher {
 	return &PodWatcher{
-		client:     client,
-		nodeName:   nodeName,
-		cgroupRoot: cgroupRoot,
-		state:      state,
-		watchers:   make(map[string]*CgroupWatcher),
+		client:        client,
+		nodeName:      nodeName,
+		cgroupRoot:    cgroupRoot,
+		state:         state,
+		watchers:      make(map[string]*CgroupWatcher),
+		claimUIDCache: make(map[string]string),
 	}
 }
 
@@ -55,7 +57,7 @@ func (pw *PodWatcher) Start(ctx context.Context) error {
 	)
 
 	podInformer := factory.Core().V1().Pods().Informer()
-	podInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+	_, _ = podInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
 			pod, ok := obj.(*v1.Pod)
 			if !ok {
@@ -103,7 +105,7 @@ func (pw *PodWatcher) handlePod(ctx context.Context, pod *v1.Pod) {
 		return
 	}
 
-	claimUIDs := pw.podClaimUIDs(pod)
+	claimUIDs := pw.podClaimUIDs(ctx, pod)
 	if len(claimUIDs) == 0 {
 		return
 	}
@@ -123,7 +125,7 @@ func (pw *PodWatcher) handlePod(ctx context.Context, pod *v1.Pod) {
 
 // handlePodDelete stops any cgroup watchers associated with the deleted pod.
 func (pw *PodWatcher) handlePodDelete(pod *v1.Pod) {
-	claimUIDs := pw.podClaimUIDs(pod)
+	claimUIDs := pw.podClaimUIDs(context.Background(), pod)
 	for _, claimUID := range claimUIDs {
 		pw.stopWatcher(claimUID)
 	}
@@ -131,13 +133,13 @@ func (pw *PodWatcher) handlePodDelete(pod *v1.Pod) {
 
 // podClaimUIDs returns the UIDs of ResourceClaims referenced by the pod
 // that are managed by our driver (i.e., have allocated slots in our state).
-func (pw *PodWatcher) podClaimUIDs(pod *v1.Pod) []string {
+func (pw *PodWatcher) podClaimUIDs(ctx context.Context, pod *v1.Pod) []string {
 	var result []string
 	for _, claim := range pod.Spec.ResourceClaims {
 		if claim.ResourceClaimName == nil {
 			continue
 		}
-		claimUID := pw.resolveClaimUID(pod.Namespace, *claim.ResourceClaimName)
+		claimUID := pw.resolveClaimUID(ctx, pod.Namespace, *claim.ResourceClaimName)
 		if claimUID == "" {
 			continue
 		}
@@ -150,15 +152,35 @@ func (pw *PodWatcher) podClaimUIDs(pod *v1.Pod) []string {
 }
 
 // resolveClaimUID looks up a ResourceClaim by namespace/name and returns its UID.
-func (pw *PodWatcher) resolveClaimUID(namespace, name string) string {
+// Results are cached to avoid repeated API calls on every pod event.
+// Cached entries are validated against the allocation state to detect
+// recycled claim names (same name, new UID).
+func (pw *PodWatcher) resolveClaimUID(ctx context.Context, namespace, name string) string {
+	key := namespace + "/" + name
+
+	pw.mu.Lock()
+	cachedUID, cached := pw.claimUIDCache[key]
+	pw.mu.Unlock()
+
+	// If cached and the UID has active allocations, it's still valid.
+	if cached && len(pw.state.SlotsByClaimUID(cachedUID)) > 0 {
+		return cachedUID
+	}
+
 	claim, err := pw.client.ResourceV1beta1().ResourceClaims(namespace).Get(
-		context.TODO(), name, metav1.GetOptions{})
+		ctx, name, metav1.GetOptions{})
 	if err != nil {
 		klog.V(4).InfoS("Failed to get ResourceClaim",
 			"namespace", namespace, "name", name, "error", err)
 		return ""
 	}
-	return string(claim.UID)
+
+	uid := string(claim.UID)
+	pw.mu.Lock()
+	pw.claimUIDCache[key] = uid
+	pw.mu.Unlock()
+
+	return uid
 }
 
 // ensureWatcher starts a CgroupWatcher for the given claim if one isn't
@@ -176,14 +198,13 @@ func (pw *PodWatcher) ensureWatcher(ctx context.Context, claimUID, podUID, cgrou
 		return
 	}
 
-	// Start a watcher for each allocated slot.
-	// For now, use the first slot. Multi-slot claims would need
-	// multiple watchers or a multi-slot watcher.
+	// One claim = one slot (one device in DRA terms).
 	slot := slots[0]
 
 	watcher := NewCgroupWatcher(cgroupPath, slot, claimUID)
 	watcher.Start(ctx)
 	pw.watchers[claimUID] = watcher
+	ActiveWatchersGauge.Inc()
 
 	klog.InfoS("Started cgroup watcher for claim",
 		"claim", claimUID, "pod", podUID, "cgroupPath", cgroupPath,
@@ -201,6 +222,7 @@ func (pw *PodWatcher) stopWatcher(claimUID string) {
 
 	if exists {
 		watcher.Stop()
+		ActiveWatchersGauge.Dec()
 		klog.InfoS("Stopped cgroup watcher for claim", "claim", claimUID)
 	}
 }
@@ -217,6 +239,7 @@ func (pw *PodWatcher) stopAll() {
 
 	for claimUID, watcher := range watchers {
 		watcher.Stop()
+		ActiveWatchersGauge.Dec()
 		klog.InfoS("Stopped cgroup watcher during shutdown", "claim", claimUID)
 	}
 }

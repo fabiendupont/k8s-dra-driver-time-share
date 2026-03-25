@@ -10,8 +10,8 @@ import (
 
 	"k8s.io/klog/v2"
 
-	"github.com/fabiendupont/k8s-dra-driver-deterministic-time-share/pkg/deadline"
-	"github.com/fabiendupont/k8s-dra-driver-deterministic-time-share/pkg/timeslot"
+	"github.com/fabiendupont/k8s-dra-driver-time-share/pkg/deadline"
+	"github.com/fabiendupont/k8s-dra-driver-time-share/pkg/timeslot"
 )
 
 const (
@@ -106,17 +106,21 @@ func (w *CgroupWatcher) poll() {
 			continue
 		}
 		if err := w.applyScheduling(pid); err != nil {
+			SchedDeadlineApplyTotal.WithLabelValues("error").Inc()
 			klog.ErrorS(err, "Failed to apply scheduling",
 				"pid", pid, "slot", w.slot.ID)
 			continue
 		}
+		SchedDeadlineApplyTotal.WithLabelValues("success").Inc()
 		w.knownPIDs[pid] = struct{}{}
+		TrackedPIDs.Inc()
 	}
 
 	// Remove stale PIDs (process exited).
 	for pid := range w.knownPIDs {
 		if _, exists := currentSet[pid]; !exists {
 			delete(w.knownPIDs, pid)
+			TrackedPIDs.Dec()
 			klog.V(3).InfoS("Process exited, removed from tracking",
 				"pid", pid, "slot", w.slot.ID)
 		}
@@ -181,6 +185,7 @@ func (w *CgroupWatcher) clearAll() {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
+	count := len(w.knownPIDs)
 	for pid := range w.knownPIDs {
 		if err := deadline.ClearDeadline(pid); err != nil {
 			klog.V(3).InfoS("Failed to clear SCHED_DEADLINE (process may have exited)",
@@ -188,6 +193,7 @@ func (w *CgroupWatcher) clearAll() {
 		}
 	}
 	w.knownPIDs = make(map[int]struct{})
+	TrackedPIDs.Sub(float64(count))
 }
 
 // readPIDs reads and parses a cgroup.procs file.

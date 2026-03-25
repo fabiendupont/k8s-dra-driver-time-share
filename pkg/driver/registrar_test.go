@@ -86,7 +86,7 @@ func TestRegistrarServe(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to connect: %v", err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	client := registerapi.NewRegistrationClient(conn)
 	info, err := client.GetInfo(context.Background(), &registerapi.InfoRequest{})
@@ -115,7 +115,7 @@ func waitForSocket(t *testing.T, path string) {
 	for time.Now().Before(deadline) {
 		conn, err := net.DialTimeout("unix", path, 100*time.Millisecond)
 		if err == nil {
-			conn.Close()
+			_ = conn.Close()
 			return
 		}
 		time.Sleep(50 * time.Millisecond)
