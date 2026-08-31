@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	resourceapi "k8s.io/api/resource/v1beta1"
+	resourceapi "k8s.io/api/resource/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/fake"
@@ -48,7 +48,7 @@ func TestRecoverAllocations(t *testing.T) {
 			},
 		},
 	}
-	_, _ = client.ResourceV1beta1().ResourceClaims("default").Create(
+	_, _ = client.ResourceV1().ResourceClaims("default").Create(
 		context.Background(), claim, metav1.CreateOptions{})
 
 	recovered, err := RecoverAllocations(context.Background(), client, testDriverName, "test-node", state)
@@ -97,7 +97,7 @@ func TestRecoverAllocationsSkipsOtherNodes(t *testing.T) {
 			},
 		},
 	}
-	_, _ = client.ResourceV1beta1().ResourceClaims("default").Create(
+	_, _ = client.ResourceV1().ResourceClaims("default").Create(
 		context.Background(), claim, metav1.CreateOptions{})
 
 	recovered, err := RecoverAllocations(context.Background(), client, testDriverName, "test-node", state)
@@ -138,7 +138,7 @@ func TestRecoverAllocationsSkipsOtherDrivers(t *testing.T) {
 			},
 		},
 	}
-	_, _ = client.ResourceV1beta1().ResourceClaims("default").Create(
+	_, _ = client.ResourceV1().ResourceClaims("default").Create(
 		context.Background(), claim, metav1.CreateOptions{})
 
 	recovered, err := RecoverAllocations(context.Background(), client, testDriverName, "test-node", state)
@@ -188,7 +188,7 @@ func TestRecoverAllocationsIdempotent(t *testing.T) {
 			},
 		},
 	}
-	_, _ = client.ResourceV1beta1().ResourceClaims("default").Create(
+	_, _ = client.ResourceV1().ResourceClaims("default").Create(
 		context.Background(), claim, metav1.CreateOptions{})
 
 	// Recover twice — should be idempotent thanks to Allocate idempotency.

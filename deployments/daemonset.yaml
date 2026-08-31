@@ -45,10 +45,10 @@ spec:
           resources:
             requests:
               cpu: 10m
-              memory: 64Mi
+              memory: 128Mi
             limits:
               cpu: 100m
-              memory: 128Mi
+              memory: 512Mi
           securityContext:
             privileged: true
           volumeMounts:
@@ -56,9 +56,8 @@ spec:
               mountPath: /var/lib/kubelet/plugins
             - name: kubelet-plugins-registry
               mountPath: /var/lib/kubelet/plugins_registry
-            - name: cgroup
-              mountPath: /sys/fs/cgroup
-              readOnly: true
+            - name: cdi
+              mountPath: /var/run/cdi
       volumes:
         - name: kubelet-plugins
           hostPath:
@@ -66,6 +65,7 @@ spec:
         - name: kubelet-plugins-registry
           hostPath:
             path: /var/lib/kubelet/plugins_registry
-        - name: cgroup
+        - name: cdi
           hostPath:
-            path: /sys/fs/cgroup
+            path: /var/run/cdi
+            type: DirectoryOrCreate

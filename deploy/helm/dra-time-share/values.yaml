@@ -1,0 +1,38 @@
+nameOverride: ""
+fullnameOverride: ""
+
+driverName: "time-share.fabiendupont.io"
+
+driver:
+  image:
+    repository: quay.io/fabiendupont/dra-time-share
+    pullPolicy: IfNotPresent
+    tag: ""
+  imagePullSecrets: []
+
+  cores: "0,1,2,3"
+  periodMs: 1
+  slotCount: 4
+  healthPort: 8080
+
+  serviceAccount:
+    create: true
+    annotations: {}
+    name: ""
+
+  resources:
+    requests:
+      cpu: 10m
+      memory: 128Mi
+    limits:
+      cpu: 100m
+      memory: 512Mi
+
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  podLabels: {}
+  podAnnotations: {}
+
+topologyRule:
+  enabled: false

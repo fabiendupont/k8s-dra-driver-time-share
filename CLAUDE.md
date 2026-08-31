@@ -27,6 +27,18 @@ make test       # run tests
 make image      # build container image
 ```
 
+## Helm
+
+```bash
+helm install dra-time-share deploy/helm/dra-time-share/ -n dra-time-share --create-namespace
+```
+
+## E2E Tests
+
+```bash
+./test/e2e/run-e2e.sh    # requires kind, kubectl, docker
+```
+
 ## Key Design Decisions
 
 - Time slots are the atomic unit: one slot = one device in DRA terms

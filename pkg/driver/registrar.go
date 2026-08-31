@@ -11,18 +11,17 @@ import (
 	"k8s.io/klog/v2"
 	registerapi "k8s.io/kubelet/pkg/apis/pluginregistration/v1"
 
-	drav1beta1 "k8s.io/kubelet/pkg/apis/dra/v1beta1"
+	drav1 "k8s.io/kubelet/pkg/apis/dra/v1"
 )
 
 // Registrar implements the kubelet plugin registration gRPC service.
 // It tells the kubelet what type of plugin this is and where its
 // DRA endpoint socket lives.
 type Registrar struct {
+	registerapi.UnimplementedRegistrationServer
 	driverName string
 	endpoint   string // path to the DRA plugin socket
 }
-
-var _ registerapi.RegistrationServer = &Registrar{}
 
 // NewRegistrar creates a plugin registrar.
 // endpoint is the absolute path to the DRA plugin socket (e.g.,
@@ -42,7 +41,7 @@ func (r *Registrar) GetInfo(ctx context.Context, req *registerapi.InfoRequest) (
 		Type:              registerapi.DRAPlugin,
 		Name:              r.driverName,
 		Endpoint:          r.endpoint,
-		SupportedVersions: []string{drav1beta1.DRAPluginService},
+		SupportedVersions: []string{drav1.DRAPluginService},
 	}, nil
 }
 

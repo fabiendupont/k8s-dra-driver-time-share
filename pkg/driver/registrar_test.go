@@ -11,7 +11,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	registerapi "k8s.io/kubelet/pkg/apis/pluginregistration/v1"
 
-	drav1beta1 "k8s.io/kubelet/pkg/apis/dra/v1beta1"
+	drav1 "k8s.io/kubelet/pkg/apis/dra/v1"
 )
 
 func TestRegistrarGetInfo(t *testing.T) {
@@ -33,8 +33,8 @@ func TestRegistrarGetInfo(t *testing.T) {
 	if info.Endpoint != endpoint {
 		t.Errorf("endpoint = %q, want %q", info.Endpoint, endpoint)
 	}
-	if len(info.SupportedVersions) != 1 || info.SupportedVersions[0] != drav1beta1.DRAPluginService {
-		t.Errorf("supportedVersions = %v, want [%s]", info.SupportedVersions, drav1beta1.DRAPluginService)
+	if len(info.SupportedVersions) != 1 || info.SupportedVersions[0] != drav1.DRAPluginService {
+		t.Errorf("supportedVersions = %v, want [%s]", info.SupportedVersions, drav1.DRAPluginService)
 	}
 }
 

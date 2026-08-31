@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: time-share-numa-rule
+  namespace: dra-time-share
+  labels:
+    nodepartition.dra.k8s.io/topology-rule: "true"
+data:
+  attribute: time-share.fabiendupont.io/numaNode
+  type: int
+  driver: time-share.fabiendupont.io
+  mapsTo: numaNode
+  partitioning: group
+  constraint: match
+  enforcement: preferred
+  description: >-
+    Maps the time-share driver's numaNode attribute to the topology
+    coordinator's standard NUMA model, enabling NUMA-aligned co-scheduling
+    of CPU time slots with GPUs and NICs.

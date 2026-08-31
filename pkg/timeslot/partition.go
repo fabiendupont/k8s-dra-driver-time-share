@@ -7,8 +7,9 @@ import (
 
 // PartitionCore divides a CPU core into equal, non-overlapping time slots.
 // Each slot gets runtime = period / slotCount, with offsets staggered
-// so that slot i starts at i * runtime.
-func PartitionCore(core int, period time.Duration, slotCount int) (*CorePartition, error) {
+// so that slot i starts at i * runtime. numaNode is the NUMA node ID
+// for the core (-1 if unknown).
+func PartitionCore(core int, period time.Duration, slotCount int, numaNode int) (*CorePartition, error) {
 	if slotCount <= 0 {
 		return nil, fmt.Errorf("slotCount must be positive, got %d", slotCount)
 	}
@@ -24,12 +25,13 @@ func PartitionCore(core int, period time.Duration, slotCount int) (*CorePartitio
 	slots := make([]TimeSlot, slotCount)
 	for i := range slotCount {
 		slots[i] = TimeSlot{
-			ID:      fmt.Sprintf("core%d-slot%d", core, i),
-			Core:    core,
-			Index:   i,
-			Offset:  time.Duration(i) * runtime,
-			Runtime: runtime,
-			Period:  period,
+			ID:       fmt.Sprintf("core%d-slot%d", core, i),
+			Core:     core,
+			Index:    i,
+			Offset:   time.Duration(i) * runtime,
+			Runtime:  runtime,
+			Period:   period,
+			NUMANode: numaNode,
 		}
 	}
 
@@ -41,14 +43,23 @@ func PartitionCore(core int, period time.Duration, slotCount int) (*CorePartitio
 }
 
 // PartitionNode creates time slot partitions for all configured cores.
+// It looks up NUMA node membership from sysfs when available.
 func PartitionNode(cfg *NodeConfig) ([]*CorePartition, error) {
 	if len(cfg.Cores) == 0 {
 		return nil, fmt.Errorf("no cores configured")
 	}
 
+	numaMap, _ := LookupNUMA("")
+
 	partitions := make([]*CorePartition, 0, len(cfg.Cores))
 	for _, core := range cfg.Cores {
-		p, err := PartitionCore(core, cfg.Period, cfg.SlotCount)
+		numaNode := -1
+		if numaMap != nil {
+			if n, ok := numaMap[core]; ok {
+				numaNode = n
+			}
+		}
+		p, err := PartitionCore(core, cfg.Period, cfg.SlotCount, numaNode)
 		if err != nil {
 			return nil, fmt.Errorf("partitioning core %d: %w", core, err)
 		}

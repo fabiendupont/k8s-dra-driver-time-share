@@ -15,8 +15,9 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/klog/v2"
-	drav1beta1 "k8s.io/kubelet/pkg/apis/dra/v1beta1"
+	drav1 "k8s.io/kubelet/pkg/apis/dra/v1"
 
+	"github.com/fabiendupont/k8s-dra-driver-time-share/pkg/deadline"
 	"github.com/fabiendupont/k8s-dra-driver-time-share/pkg/driver"
 	"github.com/fabiendupont/k8s-dra-driver-time-share/pkg/timeslot"
 )
@@ -24,6 +25,16 @@ import (
 const driverName = "time-share.fabiendupont.io"
 
 func main() {
+	// CDI hook mode: invoked by CRI-O as an OCI hook to apply SCHED_DEADLINE
+	// on the container PID. Must run before flag.Parse().
+	if len(os.Args) > 1 && os.Args[1] == "--cdi-hook" {
+		if err := deadline.RunCDIHook(os.Args[2:]); err != nil {
+			fmt.Fprintf(os.Stderr, "cdi-hook: %v\n", err)
+			os.Exit(1)
+		}
+		os.Exit(0)
+	}
+
 	var (
 		socketPath  string
 		registryDir string
@@ -31,7 +42,6 @@ func main() {
 		cores       string
 		periodMs    int
 		slotCount   int
-		cgroupRoot  string
 		healthPort  int
 	)
 
@@ -41,7 +51,6 @@ func main() {
 	flag.StringVar(&cores, "cores", "", "Comma-separated list of CPU core indices to partition (e.g., '0,2,4')")
 	flag.IntVar(&periodMs, "period-ms", 1, "Scheduling period in milliseconds")
 	flag.IntVar(&slotCount, "slot-count", 4, "Number of time slots per core")
-	flag.StringVar(&cgroupRoot, "cgroup-root", "/sys/fs/cgroup", "Root path of the cgroup v2 hierarchy")
 	flag.IntVar(&healthPort, "health-port", 8080, "Port for health check endpoints (/healthz, /readyz)")
 
 	klog.InitFlags(nil)
@@ -81,6 +90,20 @@ func main() {
 
 	state := driver.NewAllocationState(partitions)
 
+	// Install the hook binary to the host-accessible plugin directory and
+	// write CDI specs so CRI-O can apply SCHED_DEADLINE at container start.
+	pluginDir := filepath.Dir(socketPath)
+	hookBinaryPath, err := driver.InstallHookBinaries(pluginDir)
+	if err != nil {
+		klog.Fatalf("Failed to install hook binary: %v", err)
+	}
+
+	cdiDir := "/var/run/cdi"
+	if err := driver.WriteCDISpecs(cdiDir, hookBinaryPath, partitions); err != nil {
+		klog.Fatalf("Failed to write CDI specs: %v", err)
+	}
+	defer driver.CleanupCDISpecs(cdiDir)
+
 	driver.RegisterMetrics()
 	driver.SlotsTotal.Set(float64(len(allSlots)))
 
@@ -109,14 +132,7 @@ func main() {
 		klog.Fatalf("Failed to publish ResourceSlices: %v", err)
 	}
 
-	podWatcher := driver.NewPodWatcher(kubeClient, nodeName, cgroupRoot, state)
-	go func() {
-		if err := podWatcher.Start(ctx); err != nil {
-			klog.Fatalf("Pod watcher error: %v", err)
-		}
-	}()
-
-	drv := driver.NewDriver(driverName, nodeName, kubeClient, state, publisher, podWatcher)
+	drv := driver.NewDriver(driverName, nodeName, kubeClient, state, publisher)
 
 	// Start the health server for liveness/readiness probes.
 	healthServer := driver.NewHealthServer(healthPort)
@@ -125,6 +141,9 @@ func main() {
 			klog.Fatalf("Health server error: %v", err)
 		}
 	}()
+
+	// Mark ready after ResourceSlice is published and pod watcher is running.
+	healthServer.MarkReady()
 
 	// Start the kubelet plugin registration server.
 	registrar := driver.NewRegistrar(driverName, socketPath)
@@ -158,7 +177,7 @@ func runGRPCServer(ctx context.Context, socketPath string, drv *driver.Driver) e
 	}
 
 	server := grpc.NewServer()
-	drav1beta1.RegisterDRAPluginServer(server, drv)
+	drav1.RegisterDRAPluginServer(server, drv)
 
 	go func() {
 		<-ctx.Done()
@@ -203,9 +222,35 @@ func parseCores(s string) ([]int, error) {
 }
 
 func buildKubeClient() (kubernetes.Interface, error) {
-	config, err := rest.InClusterConfig()
-	if err != nil {
-		return nil, fmt.Errorf("building in-cluster config: %w", err)
+	var client kubernetes.Interface
+	var lastErr error
+
+	for attempt := 0; attempt < 10; attempt++ {
+		config, err := rest.InClusterConfig()
+		if err != nil {
+			lastErr = fmt.Errorf("building in-cluster config: %w", err)
+			klog.InfoS("Waiting for in-cluster config", "attempt", attempt+1, "error", err)
+			time.Sleep(time.Duration(attempt+1) * time.Second)
+			continue
+		}
+
+		client, err = kubernetes.NewForConfig(config)
+		if err != nil {
+			lastErr = fmt.Errorf("creating kubernetes client: %w", err)
+			time.Sleep(time.Duration(attempt+1) * time.Second)
+			continue
+		}
+
+		// Verify connectivity with a lightweight API call.
+		_, err = client.Discovery().ServerVersion()
+		if err != nil {
+			lastErr = fmt.Errorf("verifying API server connectivity: %w", err)
+			klog.InfoS("API server not reachable yet", "attempt", attempt+1, "error", err)
+			time.Sleep(time.Duration(attempt+1) * time.Second)
+			continue
+		}
+
+		return client, nil
 	}
-	return kubernetes.NewForConfig(config)
+	return nil, lastErr
 }

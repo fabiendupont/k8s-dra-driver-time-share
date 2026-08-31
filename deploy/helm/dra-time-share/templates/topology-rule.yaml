@@ -1,0 +1,18 @@
+{{- if .Values.topologyRule.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "dra-time-share.fullname" . }}-numa-rule
+  namespace: {{ .Release.Namespace }}
+  labels:
+    nodepartition.dra.k8s.io/topology-rule: "true"
+    {{- include "dra-time-share.labels" . | nindent 4 }}
+data:
+  attribute: {{ .Values.driverName }}/numaNode
+  type: int
+  driver: {{ .Values.driverName }}
+  mapsTo: numaNode
+  partitioning: group
+  constraint: match
+  enforcement: preferred
+{{- end }}

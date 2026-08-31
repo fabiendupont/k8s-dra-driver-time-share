@@ -26,6 +26,10 @@ type TimeSlot struct {
 	// Period is the scheduling period. All slots on the same core
 	// share the same period.
 	Period time.Duration
+
+	// NUMANode is the NUMA node ID for this slot's core.
+	// Set to -1 if NUMA information is not available.
+	NUMANode int
 }
 
 // Utilization returns the CPU utilization as a fraction (0.0 to 1.0).

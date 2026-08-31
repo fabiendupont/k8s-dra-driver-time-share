@@ -1,0 +1,13 @@
+apiVersion: v2
+name: dra-time-share
+description: Deterministic CPU time-share DRA driver for Kubernetes
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+kubeVersion: ">= 1.34.0"
+keywords:
+  - dra
+  - dynamic-resource-allocation
+  - cpu
+  - sched-deadline
+  - time-share

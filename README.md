@@ -26,11 +26,11 @@ Core 0, period = 1ms, 4 slots:
 
 ## Prerequisites
 
-- **Kubernetes 1.32+** with the `DynamicResourceAllocation` feature gate enabled
+- **Kubernetes 1.34+** (DRA is GA since 1.34; the driver uses the `resource.k8s.io/v1` API)
 - **Linux kernel 3.14+** with `SCHED_DEADLINE` support (all modern kernels)
 - **cgroup v2** — the driver resolves pod cgroup paths under `/sys/fs/cgroup`
 - **Privileged container** — `sched_setattr(2)` requires `CAP_SYS_NICE` (the DaemonSet runs privileged)
-- **Go 1.23+** for building from source
+- **Go 1.25+** for building from source
 
 ## Project Layout
 
@@ -101,7 +101,7 @@ Edit the DaemonSet args to match your hardware:
 ### Create a ResourceClaim
 
 ```yaml
-apiVersion: resource.k8s.io/v1beta1
+apiVersion: resource.k8s.io/v1
 kind: ResourceClaim
 metadata:
   name: my-time-slot
@@ -109,12 +109,12 @@ spec:
   devices:
     requests:
       - name: slot
-        deviceClassName: time-share-slots
-        count: 1
-        selectors:
-          - cel:
-              expression: >-
-                device.attributes['time-share.fabiendupont.io'].utilizationMillis >= 250
+        exactly:
+          deviceClassName: time-share-slots
+          selectors:
+            - cel:
+                expression: >-
+                  device.attributes['time-share.fabiendupont.io'].utilizationMillis >= 250
 ```
 
 The CEL selector above requests a slot with at least 25% CPU utilization (250 = 25.0%).
@@ -131,6 +131,7 @@ All attributes are in the `time-share.fabiendupont.io` domain. Access them in CE
 | `runtimeNs` | int | Guaranteed runtime per period (nanoseconds) |
 | `periodNs` | int | Scheduling period (nanoseconds) |
 | `utilizationMillis` | int | CPU utilization in tenths of a percent (250 = 25.0%) |
+| `numaNode` | int | NUMA node ID for this slot's core (-1 if unavailable) |
 
 ### Reference the claim from a Pod
 

@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	resourceapi "k8s.io/api/resource/v1beta1"
+	resourceapi "k8s.io/api/resource/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
@@ -22,7 +22,7 @@ func RecoverAllocations(ctx context.Context, client kubernetes.Interface, driver
 	continueToken := ""
 
 	for {
-		claims, err := client.ResourceV1beta1().ResourceClaims("").List(ctx, metav1.ListOptions{
+		claims, err := client.ResourceV1().ResourceClaims("").List(ctx, metav1.ListOptions{
 			Limit:    recoveryPageSize,
 			Continue: continueToken,
 		})

@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	resourceapi "k8s.io/api/resource/v1beta1"
+	resourceapi "k8s.io/api/resource/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
@@ -46,7 +46,7 @@ func (sp *SlicePublisher) PublishSlices(ctx context.Context, partitions []*times
 		},
 		Spec: resourceapi.ResourceSliceSpec{
 			Driver:   sp.driverName,
-			NodeName: sp.nodeName,
+			NodeName: &sp.nodeName,
 			Pool: resourceapi.ResourcePool{
 				Name:               sp.nodeName,
 				ResourceSliceCount: 1,
@@ -55,9 +55,9 @@ func (sp *SlicePublisher) PublishSlices(ctx context.Context, partitions []*times
 		},
 	}
 
-	existing, err := sp.client.ResourceV1beta1().ResourceSlices().Get(ctx, slice.Name, metav1.GetOptions{})
+	existing, err := sp.client.ResourceV1().ResourceSlices().Get(ctx, slice.Name, metav1.GetOptions{})
 	if err != nil {
-		_, createErr := sp.client.ResourceV1beta1().ResourceSlices().Create(ctx, slice, metav1.CreateOptions{})
+		_, createErr := sp.client.ResourceV1().ResourceSlices().Create(ctx, slice, metav1.CreateOptions{})
 		if createErr != nil {
 			return fmt.Errorf("creating ResourceSlice: %w", createErr)
 		}
@@ -70,7 +70,7 @@ func (sp *SlicePublisher) PublishSlices(ctx context.Context, partitions []*times
 	if slice.OwnerReferences == nil && len(existing.OwnerReferences) > 0 {
 		slice.OwnerReferences = existing.OwnerReferences
 	}
-	_, err = sp.client.ResourceV1beta1().ResourceSlices().Update(ctx, slice, metav1.UpdateOptions{})
+	_, err = sp.client.ResourceV1().ResourceSlices().Update(ctx, slice, metav1.UpdateOptions{})
 	if err != nil {
 		return fmt.Errorf("updating ResourceSlice: %w", err)
 	}
@@ -85,26 +85,27 @@ func (sp *SlicePublisher) buildDevices(partitions []*timeslot.CorePartition) []r
 	for _, slot := range allSlots {
 		dev := resourceapi.Device{
 			Name: slot.ID,
-			Basic: &resourceapi.BasicDevice{
-				Attributes: map[resourceapi.QualifiedName]resourceapi.DeviceAttribute{
-					"core": {
-						IntValue: int64Ptr(int64(slot.Core)),
-					},
-					"slotIndex": {
-						IntValue: int64Ptr(int64(slot.Index)),
-					},
-					"offsetNs": {
-						IntValue: int64Ptr(slot.Offset.Nanoseconds()),
-					},
-					"runtimeNs": {
-						IntValue: int64Ptr(slot.Runtime.Nanoseconds()),
-					},
-					"periodNs": {
-						IntValue: int64Ptr(slot.Period.Nanoseconds()),
-					},
-					"utilizationMillis": {
-						IntValue: int64Ptr(slot.UtilizationMillis()),
-					},
+			Attributes: map[resourceapi.QualifiedName]resourceapi.DeviceAttribute{
+				"core": {
+					IntValue: int64Ptr(int64(slot.Core)),
+				},
+				"slotIndex": {
+					IntValue: int64Ptr(int64(slot.Index)),
+				},
+				"offsetNs": {
+					IntValue: int64Ptr(slot.Offset.Nanoseconds()),
+				},
+				"runtimeNs": {
+					IntValue: int64Ptr(slot.Runtime.Nanoseconds()),
+				},
+				"periodNs": {
+					IntValue: int64Ptr(slot.Period.Nanoseconds()),
+				},
+				"utilizationMillis": {
+					IntValue: int64Ptr(slot.UtilizationMillis()),
+				},
+				"numaNode": {
+					IntValue: int64Ptr(int64(slot.NUMANode)),
 				},
 			},
 		}
@@ -122,7 +123,7 @@ func (sp *SlicePublisher) SliceName() string {
 // DeleteSlice removes the ResourceSlice from the API server.
 func (sp *SlicePublisher) DeleteSlice(ctx context.Context) error {
 	name := sp.SliceName()
-	err := sp.client.ResourceV1beta1().ResourceSlices().Delete(ctx, name, metav1.DeleteOptions{})
+	err := sp.client.ResourceV1().ResourceSlices().Delete(ctx, name, metav1.DeleteOptions{})
 	if err != nil {
 		return fmt.Errorf("deleting ResourceSlice %s: %w", name, err)
 	}
