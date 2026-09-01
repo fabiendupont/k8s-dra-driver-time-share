@@ -65,6 +65,12 @@ func RunCDIHook(args []string) error {
 	)
 	if output, err := cmd.CombinedOutput(); err != nil {
 		msg := strings.TrimSpace(string(output))
+		if strings.Contains(msg, "sched_setattr failed") {
+			return fmt.Errorf("SCHED_DEADLINE enforcement failed: %s. "+
+				"This kernel likely has CONFIG_RT_GROUP_SCHED=y. "+
+				"Use kernel-rt (OpenShift PerformanceProfile) or a kernel "+
+				"without CONFIG_RT_GROUP_SCHED.", msg)
+		}
 		return fmt.Errorf("sched-helper: %s (%w)", msg, err)
 	}
 

@@ -13,6 +13,8 @@ spec:
         app: dra-time-share
     spec:
       serviceAccountName: dra-time-share
+      nodeSelector:
+        time-share.fabiendupont.io/sched-deadline: "true"
       containers:
         - name: driver
           image: quay.io/fabiendupont/dra-time-share:latest

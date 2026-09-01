@@ -1,0 +1,18 @@
+{{- if .Values.nfd.enabled }}
+apiVersion: nfd.k8s-sigs.io/v1alpha1
+kind: NodeFeatureRule
+metadata:
+  name: {{ include "dra-time-share.fullname" . }}-sched-deadline
+  labels:
+    {{- include "dra-time-share.labels" . | nindent 4 }}
+spec:
+  rules:
+    - name: sched-deadline
+      labels:
+        time-share.fabiendupont.io/sched-deadline: "true"
+      matchFeatures:
+        - feature: kernel.config
+          matchExpressions:
+            RT_GROUP_SCHED:
+              op: DoesNotExist
+{{- end }}

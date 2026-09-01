@@ -27,7 +27,7 @@ Core 0, period = 1ms, 4 slots:
 ## Prerequisites
 
 - **Kubernetes 1.34+** (DRA is GA since 1.34; the driver uses the `resource.k8s.io/v1` API)
-- **Linux kernel 3.14+** with `SCHED_DEADLINE` support (all modern kernels)
+- **Linux kernel without `CONFIG_RT_GROUP_SCHED`** — required for `SCHED_DEADLINE` enforcement in containers. This includes: kernel-rt (RHEL/OpenShift via PerformanceProfile), lowlatency kernel (Ubuntu), Fedora's default kernel, and upstream/vanilla kernels. Use Node Feature Discovery (NFD) to auto-detect compatible nodes.
 - **cgroup v2** — the driver resolves pod cgroup paths under `/sys/fs/cgroup`
 - **Privileged container** — `sched_setattr(2)` requires `CAP_SYS_NICE` (the DaemonSet runs privileged)
 - **Go 1.25+** for building from source

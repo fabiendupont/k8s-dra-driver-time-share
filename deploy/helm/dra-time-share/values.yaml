@@ -28,11 +28,15 @@ driver:
       cpu: 100m
       memory: 512Mi
 
-  nodeSelector: {}
+  nodeSelector:
+    time-share.fabiendupont.io/sched-deadline: "true"
   tolerations: []
   affinity: {}
   podLabels: {}
   podAnnotations: {}
+
+nfd:
+  enabled: true
 
 topologyRule:
   enabled: false
