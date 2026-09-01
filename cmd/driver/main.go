@@ -96,7 +96,7 @@ func main() {
 	if err := os.MkdirAll(pluginDir, 0750); err != nil {
 		klog.Fatalf("Failed to create plugin directory: %v", err)
 	}
-	hookBinaryPath, err := driver.InstallHookBinaries(pluginDir)
+	hookBinaryPath, err := driver.InstallHookBinary(pluginDir)
 	if err != nil {
 		klog.Fatalf("Failed to install hook binary: %v", err)
 	}

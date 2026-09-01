@@ -115,33 +115,25 @@ func CleanupCDISpecs(cdiDir string) {
 	}
 }
 
-// InstallHookBinaries copies the driver binary and sched-helper to the
-// host-accessible plugin directory so CRI-O can execute them as CDI hooks.
-func InstallHookBinaries(hostPluginDir string) (hookPath string, err error) {
+// InstallHookBinary copies the driver binary to the host-accessible plugin
+// directory so CRI-O can execute it as a CDI hook.
+func InstallHookBinary(hostPluginDir string) (string, error) {
 	self, err := os.Executable()
 	if err != nil {
 		return "", fmt.Errorf("resolving self: %w", err)
 	}
 
-	hookPath = filepath.Join(hostPluginDir, "dra-time-share-hook")
-	if err := copyFile(self, hookPath); err != nil {
-		return "", fmt.Errorf("installing hook binary: %w", err)
-	}
+	hookPath := filepath.Join(hostPluginDir, "dra-time-share-hook")
 
-	schedHelperSrc := "/usr/bin/sched-helper"
-	schedHelperDst := filepath.Join(hostPluginDir, "sched-helper")
-	if err := copyFile(schedHelperSrc, schedHelperDst); err != nil {
-		return "", fmt.Errorf("installing sched-helper: %w", err)
-	}
-
-	klog.InfoS("Installed hook binaries", "hook", hookPath, "schedHelper", schedHelperDst)
-	return hookPath, nil
-}
-
-func copyFile(src, dst string) error {
-	data, err := os.ReadFile(src)
+	src, err := os.ReadFile(self)
 	if err != nil {
-		return err
+		return "", fmt.Errorf("reading self binary: %w", err)
 	}
-	return os.WriteFile(dst, data, 0755)
+
+	if err := os.WriteFile(hookPath, src, 0755); err != nil {
+		return "", fmt.Errorf("writing hook binary: %w", err)
+	}
+
+	klog.InfoS("Installed hook binary", "path", hookPath)
+	return hookPath, nil
 }

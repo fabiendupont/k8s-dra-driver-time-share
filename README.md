@@ -10,38 +10,52 @@ Each CPU core is partitioned into non-overlapping time slots defined by an offse
 Core 0, period = 1ms, 4 slots:
 
 |----slot0----|----slot1----|----slot2----|----slot3----|
-0µs         250µs         500µs         750µs        1000µs
- runtime=250µs runtime=250µs runtime=250µs runtime=250µs
+0us         250us         500us         750us        1000us
+ runtime=250us runtime=250us runtime=250us runtime=250us
 ```
 
 1. **Partition** — On startup, the driver divides each configured CPU core into equal time slots. Each slot gets `runtime = period / slotCount` with staggered offsets.
 
-2. **Advertise** — Slots are published as DRA devices in a ResourceSlice. Each device exposes attributes like `core`, `runtimeNs`, `periodNs`, and `utilizationMillis`.
+2. **Advertise** — Slots are published as DRA devices in a ResourceSlice. Each device exposes attributes like `core`, `runtimeNs`, `periodNs`, `numaNode`, and `utilizationMillis`.
 
-3. **Allocate** — The Kubernetes scheduler picks a slot for each ResourceClaim. When the pod starts, kubelet calls `NodePrepareResources` and the driver records the allocation.
+3. **Allocate** — The Kubernetes scheduler picks a slot for each ResourceClaim. When the pod starts, kubelet calls `NodePrepareResources` and the driver records the allocation, returning CDI device IDs.
 
-4. **Enforce** — A pod watcher detects running pods with allocated claims, resolves their cgroup paths, and starts polling for PIDs. Each PID is pinned to the slot's core via `sched_setaffinity(2)` and given a `SCHED_DEADLINE` budget via `sched_setattr(2)`.
+4. **Enforce** — At container creation, CRI-O reads the CDI spec and executes a `createRuntime` hook. The hook pins the container's init process to the slot's core via `sched_setaffinity(2)` and applies `SCHED_DEADLINE` via `sched_setattr(2)`. Enforcement happens before the container's entrypoint runs.
 
-5. **Release** — When the pod is deleted or the claim is released, the driver clears `SCHED_DEADLINE` from all tracked PIDs and frees the slot.
+5. **Release** — When the pod is deleted or the claim is released, `NodeUnprepareResources` frees the slot for reuse.
 
 ## Prerequisites
 
 - **Kubernetes 1.34+** (DRA is GA since 1.34; the driver uses the `resource.k8s.io/v1` API)
-- **Linux kernel without `CONFIG_RT_GROUP_SCHED`** — required for `SCHED_DEADLINE` enforcement in containers. This includes: kernel-rt (RHEL/OpenShift via PerformanceProfile), lowlatency kernel (Ubuntu), Fedora's default kernel, and upstream/vanilla kernels. Use Node Feature Discovery (NFD) to auto-detect compatible nodes.
-- **cgroup v2** — the driver resolves pod cgroup paths under `/sys/fs/cgroup`
-- **Privileged container** — `sched_setattr(2)` requires `CAP_SYS_NICE` (the DaemonSet runs privileged)
+- **Linux kernel without `CONFIG_RT_GROUP_SCHED`** — required for `SCHED_DEADLINE` enforcement in containers (see [Kernel Compatibility](#kernel-compatibility))
+- **crun** as the OCI runtime (default on OpenShift 4.x; required for CDI hook support)
+- **cgroup v2**
 - **Go 1.25+** for building from source
+
+### Kernel Compatibility
+
+`SCHED_DEADLINE` requires the kernel to allow real-time scheduling in non-root cgroups. The kernel config option `CONFIG_RT_GROUP_SCHED` blocks this. Compatible kernels include:
+
+| Platform | Kernel | Compatible? |
+|----------|--------|-------------|
+| RHEL / OpenShift | kernel-rt (via MachineConfig or PerformanceProfile) | Yes |
+| Fedora | default kernel | Yes |
+| Ubuntu | lowlatency kernel | Yes |
+| Ubuntu | generic kernel | No (`CONFIG_RT_GROUP_SCHED=y`) |
+| Upstream / vanilla | default | Yes |
+
+Use [Node Feature Discovery (NFD)](#node-feature-discovery) to auto-detect compatible nodes and prevent the driver from deploying where enforcement would fail.
 
 ## Project Layout
 
 ```
-cmd/driver/            Main entrypoint
-pkg/timeslot/          Time slot model and partitioning logic
-pkg/driver/            DRA plugin, state, ResourceSlice publishing,
-                       pod/cgroup watchers, recovery
-pkg/deadline/          SCHED_DEADLINE and sched_setaffinity syscall wrappers
-deployments/           Kubernetes manifests
-deployments/examples/  Example ResourceClaim and Pod
+cmd/driver/            Main entrypoint (DRA plugin + CDI hook mode)
+pkg/timeslot/          Time slot model, partitioning logic, NUMA discovery
+pkg/driver/            DRA plugin, state, ResourceSlice publishing, CDI spec generation
+pkg/deadline/          SCHED_DEADLINE / sched_setaffinity syscall wrappers, CDI hook
+deploy/helm/           Helm chart
+deployments/           Raw Kubernetes manifests
+test/e2e/              End-to-end tests (kind + CRC)
 ```
 
 ## Build
@@ -58,40 +72,38 @@ The container image defaults to `quay.io/fabiendupont/dra-time-share:latest`. Ov
 make image IMAGE=my-registry/dra-time-share TAG=v0.1.0
 ```
 
+The image is based on UBI 10 (go-toolset for build, ubi-micro for runtime). The single `dra-time-share` binary serves as both the DRA plugin and the CDI hook entry point.
+
 ## Deploy
 
-### 1. Create the namespace, ServiceAccount, and RBAC
+### With Helm
+
+```bash
+helm install dra-time-share deploy/helm/dra-time-share/ \
+  -n dra-time-share --create-namespace \
+  --set driver.cores="4,5,6,7" \
+  --set driver.slotCount=4 \
+  --set driver.periodMs=1
+```
+
+### With raw manifests
 
 ```bash
 kubectl apply -f deployments/rbac.yaml
-```
-
-This creates:
-- Namespace `dra-time-share`
-- ServiceAccount with ClusterRole permissions for ResourceSlices (CRUD), ResourceClaims (GET), and Pods (GET/LIST/WATCH)
-
-### 2. Create the DeviceClass
-
-```bash
 kubectl apply -f deployments/device-class.yaml
-```
-
-The `time-share-slots` DeviceClass selects all devices from driver `time-share.fabiendupont.io`.
-
-### 3. Deploy the DaemonSet
-
-```bash
+kubectl apply -f deployments/node-feature-rule.yaml   # optional, requires NFD
 kubectl apply -f deployments/daemonset.yaml
 ```
+
+### Configuration
 
 Edit the DaemonSet args to match your hardware:
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--cores` | (required) | Comma-separated CPU core indices to partition (e.g., `0,1,2,3`) |
+| `--cores` | (required) | Comma-separated CPU core indices to partition (e.g., `4,5,6,7`) |
 | `--period-ms` | `1` | Scheduling period in milliseconds |
 | `--slot-count` | `4` | Number of time slots per core |
-| `--cgroup-root` | `/sys/fs/cgroup` | cgroup v2 root path |
 | `--socket` | `/var/lib/kubelet/plugins/time-share.fabiendupont.io/plugin.sock` | DRA plugin socket path |
 | `--health-port` | `8080` | Port for health (`/healthz`, `/readyz`) and metrics (`/metrics`) endpoints |
 | `--registry-dir` | `/var/lib/kubelet/plugins_registry` | Kubelet plugin registry directory |
@@ -143,8 +155,8 @@ metadata:
 spec:
   containers:
     - name: workload
-      image: busybox:latest
-      command: ["sh", "-c", "while true; do echo 'running'; sleep 1; done"]
+      image: my-app:latest
+      command: ["/my-app"]
       resources:
         claims:
           - name: time-slot
@@ -153,11 +165,11 @@ spec:
       resourceClaimName: my-time-slot
 ```
 
-Once the pod is running, all its processes will be pinned to the allocated core and scheduled under `SCHED_DEADLINE` with the slot's parameters.
+Once the pod is running, the container's init process is pinned to the allocated core and scheduled under `SCHED_DEADLINE` with the slot's parameters.
 
 ### Verify scheduling
 
-From inside the pod or on the node, check the scheduling policy of a process:
+From the node, check the scheduling policy of the container's process:
 
 ```bash
 chrt -p <pid>
@@ -172,47 +184,73 @@ pid <pid>'s current scheduling policy: SCHED_DEADLINE
 ## Architecture
 
 ```
-┌───────────────────────────────────────────────────────┐
-│                    kubelet                            │
-│  NodePrepareResources ──► Driver.prepareClaim()       │
-│  NodeUnprepareResources ► Driver.unprepareClaim()     │
-└────────────────────────────┬──────────────────────────┘
-                             │
-          ┌──────────────────┼──────────────────┐
-          │                  │                  │
-   ┌──────▼──────┐   ┌───────▼──────┐   ┌───────▼───────┐
-   │ Allocation  │   │    Pod       │   │   Slice       │
-   │   State     │   │  Watcher     │   │ Publisher     │
-   │             │   │  (informer)  │   │               │
-   │ slot→claim  │   │              │   │ ResourceSlice │
-   │   mapping   │   │ detects      │   │  with all     │
-   │             │   │ running pods │   │  devices      │
-   └─────────────┘   └───────┬──────┘   └───────────────┘
-                             │
-                     ┌───────▼──────┐
-                     │   Cgroup     │
-                     │   Watcher    │
-                     │              │
-                     │ polls PIDs   │
-                     │ applies      │
-                     │ SCHED_       │
-                     │ DEADLINE     │
-                     └──────────────┘
+                         ┌─────────────────────────────┐
+                         │        kube-scheduler        │
+                         │  allocates slots from        │
+                         │  ResourceSlice devices       │
+                         └──────────────┬──────────────┘
+                                        │
+┌───────────────────────────────────────┼───────────────────────────────────┐
+│ Node                                  │                                   │
+│                                       │                                   │
+│  ┌────────────────────────────────────▼──────────────────────────────┐    │
+│  │                          kubelet                                  │    │
+│  │  NodePrepareResources ──► driver records allocation               │    │
+│  │                           returns CDI device IDs                  │    │
+│  │                                                                   │    │
+│  │  Container creation ──► CRI-O reads CDI spec                      │    │
+│  │                          executes createRuntime hook              │    │
+│  │                          ──► hook applies                         │    │
+│  │                               sched_setaffinity + sched_setattr   │    │
+│  │                                                                   │    │
+│  │  NodeUnprepareResources ► driver releases slot                    │    │
+│  └───────────────────────────────────────────────────────────────────┘    │
+│                                                                           │
+│  ┌──────────────┐   ┌──────────────┐   ┌──────────────┐                  │
+│  │ Allocation   │   │    Slice     │   │  CDI Specs   │                  │
+│  │   State      │   │  Publisher   │   │  (/var/run/  │                  │
+│  │              │   │              │   │   cdi/)      │                  │
+│  │ slot→claim   │   │ ResourceSlice│   │              │                  │
+│  │  mapping     │   │  with all    │   │ createRuntime│                  │
+│  │              │   │  devices     │   │  hooks per   │                  │
+│  │              │   │  + numaNode  │   │  slot        │                  │
+│  └──────────────┘   └──────────────┘   └──────────────┘                  │
+└───────────────────────────────────────────────────────────────────────────┘
 ```
+
+### CDI Hook Enforcement
+
+The `dra-time-share` binary doubles as the CDI hook entry point. When invoked with `--cdi-hook`, it reads the container PID from the OCI state on stdin and calls `sched_setaffinity` + `sched_setattr` directly via Go syscalls. No external helper binaries are needed.
+
+The hook runs as a host process invoked by CRI-O during `createRuntime`, before the container's entrypoint executes. This ensures the process starts under `SCHED_DEADLINE` from the first instruction.
 
 ### Recovery
 
-If the driver pod restarts, it recovers by listing all ResourceClaims from the API server and re-populating its allocation state for claims that belong to its driver and node. The pod watcher then re-discovers running pods and re-applies scheduling.
+If the driver pod restarts, it recovers by listing all ResourceClaims from the API server and re-populating its allocation state for claims that belong to its driver and node.
 
-### Cgroup Path Resolution
+## Node Feature Discovery
 
-The driver supports three cgroup v2 layouts for locating pod cgroups:
+The driver includes a [NodeFeatureRule](deployments/node-feature-rule.yaml) that labels compatible nodes:
 
-| Layout | Path pattern |
-|--------|-------------|
-| **systemd** (default) | `<root>/kubepods.slice/kubepods-<qos>.slice/kubepods-<qos>-pod<uid>.slice/` |
-| **cgroupfs** | `<root>/kubepods/<qos>/pod<uid>/` |
-| **kubelet.slice** | `<root>/kubelet.slice/kubelet-kubepods.slice/kubelet-kubepods-<qos>.slice/kubelet-kubepods-<qos>-pod<uid>.slice/` |
+```yaml
+time-share.fabiendupont.io/sched-deadline: "true"
+```
+
+The DaemonSet uses this label as a `nodeSelector`, ensuring the driver only deploys on nodes where `SCHED_DEADLINE` enforcement works. Install the rule alongside NFD:
+
+```bash
+kubectl apply -f deployments/node-feature-rule.yaml
+```
+
+## Topology Coordinator Integration
+
+The driver publishes a `numaNode` attribute per device, enabling integration with the [Node Partition Topology Coordinator](https://github.com/fabiendupont/k8s-dra-topology-coordinator). A pod can claim NUMA-aligned CPU time slots alongside GPUs and NICs:
+
+```bash
+kubectl apply -f deployments/topology-rule.yaml
+```
+
+The topology rule maps `time-share.fabiendupont.io/numaNode` to the coordinator's standard NUMA model with `preferred` enforcement.
 
 ## Metrics
 
@@ -222,21 +260,8 @@ The driver exposes Prometheus metrics on port 8080 at `/metrics`.
 |--------|------|-------------|
 | `dra_time_share_slots_total` | gauge | Total number of time slots advertised |
 | `dra_time_share_slots_allocated` | gauge | Number of currently allocated slots |
-| `dra_time_share_active_watchers` | gauge | Number of active cgroup watchers |
-| `dra_time_share_tracked_pids` | gauge | Number of PIDs with SCHED_DEADLINE applied |
 | `dra_time_share_prepare_total` | counter | NodePrepareResources calls (labels: `result=success\|error`) |
 | `dra_time_share_unprepare_total` | counter | NodeUnprepareResources calls (labels: `result=success\|error`) |
-| `dra_time_share_sched_deadline_apply_total` | counter | SCHED_DEADLINE apply attempts (labels: `result=success\|error`) |
-
-To scrape with Prometheus, add a `PodMonitor` or annotate the pods:
-
-```yaml
-metadata:
-  annotations:
-    prometheus.io/scrape: "true"
-    prometheus.io/port: "8080"
-    prometheus.io/path: "/metrics"
-```
 
 ## Configuration Examples
 
@@ -275,6 +300,22 @@ args:
 
 ## Troubleshooting
 
+### Pod stuck in `CreateContainerError`
+
+The CDI hook failed to apply `SCHED_DEADLINE`. Check:
+
+1. **Kernel compatibility** — The node kernel has `CONFIG_RT_GROUP_SCHED=y`. Switch to kernel-rt (OpenShift: apply a MachineConfig with `kernelType: realtime`) or use a compatible kernel.
+
+2. **CDI spec missing** — The driver writes CDI specs to `/var/run/cdi/`. Verify:
+   ```bash
+   ls /var/run/cdi/time-share.fabiendupont.io-slot.json
+   ```
+
+3. **Hook binary missing** — The driver copies itself to the plugin directory at startup:
+   ```bash
+   ls /var/lib/kubelet/plugins/time-share.fabiendupont.io/dra-time-share-hook
+   ```
+
 ### Pod stuck in Pending
 
 Check that the ResourceClaim is allocated:
@@ -287,23 +328,13 @@ Look for `status.allocation`. If missing, check that:
 - The DeviceClass exists
 - The driver DaemonSet is running and the ResourceSlice is published
 - The CEL selector matches available devices
+- The node has the `time-share.fabiendupont.io/sched-deadline=true` label
 
-```bash
-kubectl get resourceslice -o yaml
-```
+### Driver pod not starting
 
-### SCHED_DEADLINE not applied
-
-Check the driver logs:
-
-```bash
-kubectl logs -n dra-time-share -l app=dra-time-share
-```
-
-Common issues:
-- **"Could not resolve cgroup path"** — The pod's cgroup layout doesn't match any of the supported patterns. Check `--cgroup-root`.
-- **"sched_setattr: operation not permitted"** — The driver container isn't running privileged or lacks `CAP_SYS_NICE`.
-- **"sched_setattr: invalid argument"** — The runtime/period values may be too small for the kernel. The minimum `SCHED_DEADLINE` runtime is typically 1024ns.
+The DaemonSet requires the node label `time-share.fabiendupont.io/sched-deadline=true`. Either:
+- Install NFD and apply the NodeFeatureRule, or
+- Label nodes manually: `kubectl label node <name> time-share.fabiendupont.io/sched-deadline=true`
 
 ### Driver pod restarting
 
@@ -313,6 +344,24 @@ Check for RBAC issues:
 kubectl auth can-i get resourceclaims --as=system:serviceaccount:dra-time-share:dra-time-share
 kubectl auth can-i list pods --as=system:serviceaccount:dra-time-share:dra-time-share
 ```
+
+## E2E Tests
+
+### kind (smoke test)
+
+```bash
+./test/e2e/run-e2e.sh
+```
+
+Requires kind, kubectl, docker/podman. Tests the DRA lifecycle (partition, publish, allocate, prepare, release) but does not verify SCHED_DEADLINE enforcement (kind nodes lack kernel capabilities).
+
+### CRC / OpenShift (full enforcement)
+
+```bash
+./test/e2e/run-e2e-crc.sh
+```
+
+Requires a running CRC instance with kernel-rt or `sysctl kernel.sched_rt_runtime_us=-1`. Tests the complete flow including SCHED_DEADLINE enforcement via CDI hooks.
 
 ## License
 
