@@ -93,6 +93,9 @@ func main() {
 	// Install the hook binary to the host-accessible plugin directory and
 	// write CDI specs so CRI-O can apply SCHED_DEADLINE at container start.
 	pluginDir := filepath.Dir(socketPath)
+	if err := os.MkdirAll(pluginDir, 0750); err != nil {
+		klog.Fatalf("Failed to create plugin directory: %v", err)
+	}
 	hookBinaryPath, err := driver.InstallHookBinaries(pluginDir)
 	if err != nil {
 		klog.Fatalf("Failed to install hook binary: %v", err)
