@@ -1,3 +1,8 @@
+# Labels nodes where CONFIG_RT_GROUP_SCHED is absent (kernel-rt, Fedora, upstream).
+# NOTE: NFD reads kernel config from /boot/config-* or /proc/config.gz.
+# On RHCOS, these may not be present, causing the rule to match vacuously.
+# Consider adding a secondary check (e.g., kernel version contains ".rt")
+# for RHCOS environments.
 apiVersion: nfd.k8s-sigs.io/v1alpha1
 kind: NodeFeatureRule
 metadata:

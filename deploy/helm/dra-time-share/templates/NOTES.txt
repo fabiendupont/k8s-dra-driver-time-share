@@ -1,0 +1,21 @@
+Deterministic Time-Share DRA Driver installed.
+
+Nodes must have the label:
+  time-share.fabiendupont.io/sched-deadline=true
+
+To label nodes manually:
+  kubectl label node <name> time-share.fabiendupont.io/sched-deadline=true
+
+Or install the NodeFeatureRule for auto-detection:
+  kubectl apply -f deployments/node-feature-rule.yaml
+
+Verify the driver is running:
+  kubectl -n {{ .Release.Namespace }} get pods -l app.kubernetes.io/name={{ include "dra-time-share.name" . }}
+
+Verify ResourceSlice is published:
+  kubectl get resourceslices -o json | jq '.items[] | select(.spec.driver == "{{ .Values.driverName }}")'
+
+Create a claim:
+  kubectl apply -f deployments/examples/claim.yaml
+
+Refer to the README for full usage instructions.

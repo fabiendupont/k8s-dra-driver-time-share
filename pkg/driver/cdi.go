@@ -3,6 +3,7 @@ package driver
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -125,12 +126,19 @@ func InstallHookBinary(hostPluginDir string) (string, error) {
 
 	hookPath := filepath.Join(hostPluginDir, "dra-time-share-hook")
 
-	src, err := os.ReadFile(self)
+	srcFile, err := os.Open(self)
 	if err != nil {
-		return "", fmt.Errorf("reading self binary: %w", err)
+		return "", fmt.Errorf("opening self binary: %w", err)
 	}
+	defer srcFile.Close()
 
-	if err := os.WriteFile(hookPath, src, 0755); err != nil {
+	dstFile, err := os.OpenFile(hookPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0755)
+	if err != nil {
+		return "", fmt.Errorf("creating hook binary: %w", err)
+	}
+	defer dstFile.Close()
+
+	if _, err := io.Copy(dstFile, srcFile); err != nil {
 		return "", fmt.Errorf("writing hook binary: %w", err)
 	}
 

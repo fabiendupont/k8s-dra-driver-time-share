@@ -52,6 +52,8 @@ spec:
               cpu: 100m
               memory: 512Mi
           securityContext:
+            # Privileged is required to install the hook binary to the
+            # host kubelet plugins directory and write CDI specs.
             privileged: true
           volumeMounts:
             - name: kubelet-plugins

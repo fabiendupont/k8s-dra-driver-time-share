@@ -6,7 +6,7 @@ MODULE    := github.com/fabiendupont/k8s-dra-driver-time-share
 .PHONY: build test image clean
 
 build:
-	go build -o bin/$(BINARY) ./cmd/driver
+	CGO_ENABLED=0 go build -o bin/$(BINARY) ./cmd/driver
 
 test:
 	go test ./...

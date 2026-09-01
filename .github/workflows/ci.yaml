@@ -45,6 +45,17 @@ jobs:
           version: latest
           args: --timeout=5m
 
+  helm-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+
+      - name: Lint Helm chart
+        run: helm lint deploy/helm/dra-time-share/
+
   image:
     runs-on: ubuntu-latest
     needs: [build, lint]

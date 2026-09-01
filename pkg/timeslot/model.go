@@ -57,9 +57,6 @@ type CorePartition struct {
 
 // NodeConfig defines the time slot partitioning configuration for a node.
 type NodeConfig struct {
-	// DriverName is the DRA driver name registered with Kubernetes.
-	DriverName string
-
 	// Cores lists the CPU core indices to partition into time slots.
 	Cores []int
 

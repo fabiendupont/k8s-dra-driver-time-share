@@ -24,7 +24,7 @@ func NewHealthServer(port int) *HealthServer {
 }
 
 // MarkReady signals that the driver is ready to serve requests.
-// Call this after ResourceSlice publication and informer cache sync.
+// Call this after ResourceSlice publication and CDI spec installation.
 func (h *HealthServer) MarkReady() {
 	h.ready.Store(true)
 	klog.InfoS("Health server: marked ready")

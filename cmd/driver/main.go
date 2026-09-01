@@ -43,6 +43,7 @@ func main() {
 		periodMs    int
 		slotCount   int
 		healthPort  int
+		cdiDir      string
 	)
 
 	flag.StringVar(&socketPath, "socket", "/var/lib/kubelet/plugins/time-share.fabiendupont.io/plugin.sock", "DRA plugin gRPC socket path")
@@ -52,6 +53,7 @@ func main() {
 	flag.IntVar(&periodMs, "period-ms", 1, "Scheduling period in milliseconds")
 	flag.IntVar(&slotCount, "slot-count", 4, "Number of time slots per core")
 	flag.IntVar(&healthPort, "health-port", 8080, "Port for health check endpoints (/healthz, /readyz)")
+	flag.StringVar(&cdiDir, "cdi-dir", "/var/run/cdi", "Directory for CDI spec files")
 
 	klog.InitFlags(nil)
 	flag.Parse()
@@ -69,10 +71,9 @@ func main() {
 	}
 
 	cfg := &timeslot.NodeConfig{
-		DriverName: driverName,
-		Cores:      coreList,
-		Period:     time.Duration(periodMs) * time.Millisecond,
-		SlotCount:  slotCount,
+		Cores:     coreList,
+		Period:    time.Duration(periodMs) * time.Millisecond,
+		SlotCount: slotCount,
 	}
 
 	partitions, err := timeslot.PartitionNode(cfg)
@@ -101,7 +102,6 @@ func main() {
 		klog.Fatalf("Failed to install hook binary: %v", err)
 	}
 
-	cdiDir := "/var/run/cdi"
 	if err := driver.WriteCDISpecs(cdiDir, hookBinaryPath, partitions); err != nil {
 		klog.Fatalf("Failed to write CDI specs: %v", err)
 	}
@@ -115,7 +115,7 @@ func main() {
 		klog.Fatalf("Failed to create Kubernetes client: %v", err)
 	}
 
-	publisher := driver.NewSlicePublisher(kubeClient, driverName, nodeName, state)
+	publisher := driver.NewSlicePublisher(kubeClient, driverName, nodeName)
 
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer cancel()
@@ -145,7 +145,7 @@ func main() {
 		}
 	}()
 
-	// Mark ready after ResourceSlice is published and pod watcher is running.
+	// Mark ready after ResourceSlice is published and CDI specs are written.
 	healthServer.MarkReady()
 
 	// Start the kubelet plugin registration server.
@@ -169,9 +169,6 @@ func main() {
 }
 
 func runGRPCServer(ctx context.Context, socketPath string, drv *driver.Driver) error {
-	if err := os.MkdirAll(filepath.Dir(socketPath), 0750); err != nil {
-		return fmt.Errorf("creating socket directory: %w", err)
-	}
 	_ = os.Remove(socketPath) // clean up stale socket
 
 	listener, err := net.Listen("unix", socketPath)

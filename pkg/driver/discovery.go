@@ -17,16 +17,14 @@ type SlicePublisher struct {
 	client     kubernetes.Interface
 	driverName string
 	nodeName   string
-	state      *AllocationState
 }
 
 // NewSlicePublisher creates a publisher that manages ResourceSlices.
-func NewSlicePublisher(client kubernetes.Interface, driverName, nodeName string, state *AllocationState) *SlicePublisher {
+func NewSlicePublisher(client kubernetes.Interface, driverName, nodeName string) *SlicePublisher {
 	return &SlicePublisher{
 		client:     client,
 		driverName: driverName,
 		nodeName:   nodeName,
-		state:      state,
 	}
 }
 
@@ -55,18 +53,19 @@ func (sp *SlicePublisher) PublishSlices(ctx context.Context, partitions []*times
 		},
 	}
 
-	existing, err := sp.client.ResourceV1().ResourceSlices().Get(ctx, slice.Name, metav1.GetOptions{})
-	if err != nil {
-		_, createErr := sp.client.ResourceV1().ResourceSlices().Create(ctx, slice, metav1.CreateOptions{})
-		if createErr != nil {
-			return fmt.Errorf("creating ResourceSlice: %w", createErr)
-		}
+	_, err = sp.client.ResourceV1().ResourceSlices().Create(ctx, slice, metav1.CreateOptions{})
+	if err == nil {
 		klog.InfoS("Created ResourceSlice", "name", slice.Name, "devices", len(devices))
 		return nil
 	}
 
+	// Slice already exists — fetch and update.
+	existing, getErr := sp.client.ResourceV1().ResourceSlices().Get(ctx, slice.Name, metav1.GetOptions{})
+	if getErr != nil {
+		return fmt.Errorf("creating ResourceSlice: %w; fetching existing: %v", err, getErr)
+	}
+
 	slice.ResourceVersion = existing.ResourceVersion
-	// Preserve existing owner references if we failed to fetch the node.
 	if slice.OwnerReferences == nil && len(existing.OwnerReferences) > 0 {
 		slice.OwnerReferences = existing.OwnerReferences
 	}

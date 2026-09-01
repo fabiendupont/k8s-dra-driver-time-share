@@ -6,7 +6,7 @@ spec:
   containers:
     - name: workload
       image: busybox:latest
-      command: ["sh", "-c", "while true; do echo 'running in time slot'; sleep 1; done"]
+      command: ["sleep", "infinity"]
       resources:
         claims:
           - name: time-slot

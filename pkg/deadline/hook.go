@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"strconv"
+	"strings"
 )
 
 // OCIState is the subset of OCI runtime state passed to hooks on stdin.
@@ -22,17 +23,24 @@ type OCIState struct {
 // The hook runs as a host process invoked by CRI-O during container creation.
 // Requires a kernel without CONFIG_RT_GROUP_SCHED (kernel-rt, Fedora, upstream).
 func RunCDIHook(args []string) error {
-	var core int
-	var runtimeNs, periodNs uint64
+	var (
+		core      int
+		runtimeNs uint64
+		periodNs  uint64
+		parseErr  error
+	)
 
 	for _, arg := range args {
 		switch {
-		case hasPrefix(arg, "--core="):
-			core, _ = strconv.Atoi(arg[len("--core="):])
-		case hasPrefix(arg, "--runtime-ns="):
-			runtimeNs, _ = strconv.ParseUint(arg[len("--runtime-ns="):], 10, 64)
-		case hasPrefix(arg, "--period-ns="):
-			periodNs, _ = strconv.ParseUint(arg[len("--period-ns="):], 10, 64)
+		case strings.HasPrefix(arg, "--core="):
+			core, parseErr = strconv.Atoi(arg[len("--core="):])
+		case strings.HasPrefix(arg, "--runtime-ns="):
+			runtimeNs, parseErr = strconv.ParseUint(arg[len("--runtime-ns="):], 10, 64)
+		case strings.HasPrefix(arg, "--period-ns="):
+			periodNs, parseErr = strconv.ParseUint(arg[len("--period-ns="):], 10, 64)
+		}
+		if parseErr != nil {
+			return fmt.Errorf("invalid argument %q: %w", arg, parseErr)
 		}
 	}
 
@@ -54,9 +62,8 @@ func RunCDIHook(args []string) error {
 	}
 
 	if err := SetDeadline(state.PID, runtimeNs, periodNs, periodNs); err != nil {
-		return fmt.Errorf("sched_setattr(pid=%d): %w. "+
-			"If the kernel has CONFIG_RT_GROUP_SCHED=y, switch to kernel-rt "+
-			"or a kernel without CONFIG_RT_GROUP_SCHED", state.PID, err)
+		return fmt.Errorf("kernel may have CONFIG_RT_GROUP_SCHED=y (use kernel-rt): sched_setattr(pid=%d): %w",
+			state.PID, err)
 	}
 
 	fmt.Fprintf(os.Stderr, "Applied SCHED_DEADLINE to container pid %d (core=%d runtime=%dns period=%dns)\n",
@@ -70,8 +77,4 @@ func readOCIState(r io.Reader) (*OCIState, error) {
 		return nil, err
 	}
 	return &state, nil
-}
-
-func hasPrefix(s, prefix string) bool {
-	return len(s) >= len(prefix) && s[:len(prefix)] == prefix
 }

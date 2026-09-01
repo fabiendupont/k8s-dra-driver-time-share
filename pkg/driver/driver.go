@@ -32,10 +32,9 @@ func NewDriver(driverName, nodeName string, client kubernetes.Interface, state *
 }
 
 // NodePrepareResources is called by the kubelet when a pod that references
-// ResourceClaims is about to start. At this point the container has not
-// started yet, so there are no PIDs to configure. The driver records the
-// allocation; the PodWatcher will detect the running pod and start cgroup
-// watchers to apply SCHED_DEADLINE as processes appear.
+// ResourceClaims is about to start. The driver records the allocation and
+// returns CDI device IDs; enforcement happens via CDI hooks at container
+// creation.
 func (d *Driver) NodePrepareResources(ctx context.Context, req *drav1.NodePrepareResourcesRequest) (*drav1.NodePrepareResourcesResponse, error) {
 	resp := &drav1.NodePrepareResourcesResponse{
 		Claims: make(map[string]*drav1.NodePrepareResourceResponse),
@@ -111,8 +110,8 @@ func (d *Driver) prepareClaim(ctx context.Context, claim *drav1.Claim) *drav1.No
 }
 
 // NodeUnprepareResources is called when a pod's ResourceClaims are no longer
-// needed. The driver stops cgroup watchers and clears SCHED_DEADLINE from
-// any tracked PIDs before releasing the slots.
+// needed. The driver releases the slot allocation. SCHED_DEADLINE ceases
+// when the container exits.
 func (d *Driver) NodeUnprepareResources(ctx context.Context, req *drav1.NodeUnprepareResourcesRequest) (*drav1.NodeUnprepareResourcesResponse, error) {
 	resp := &drav1.NodeUnprepareResourcesResponse{
 		Claims: make(map[string]*drav1.NodeUnprepareResourceResponse),

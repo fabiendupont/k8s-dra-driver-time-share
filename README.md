@@ -28,9 +28,8 @@ Core 0, period = 1ms, 4 slots:
 
 - **Kubernetes 1.34+** (DRA is GA since 1.34; the driver uses the `resource.k8s.io/v1` API)
 - **Linux kernel without `CONFIG_RT_GROUP_SCHED`** — required for `SCHED_DEADLINE` enforcement in containers (see [Kernel Compatibility](#kernel-compatibility))
-- **crun** as the OCI runtime (default on OpenShift 4.x; required for CDI hook support)
-- **cgroup v2**
-- **Go 1.25+** for building from source
+- **CRI-O or containerd** with CDI support (CDI hooks are a spec feature, not runtime-specific)
+- **Go 1.26+** for building from source
 
 ### Kernel Compatibility
 
@@ -342,7 +341,7 @@ Check for RBAC issues:
 
 ```bash
 kubectl auth can-i get resourceclaims --as=system:serviceaccount:dra-time-share:dra-time-share
-kubectl auth can-i list pods --as=system:serviceaccount:dra-time-share:dra-time-share
+kubectl auth can-i create resourceslices --as=system:serviceaccount:dra-time-share:dra-time-share
 ```
 
 ## E2E Tests

@@ -1,0 +1,14 @@
+.git
+.tokensave
+.claude
+test
+deploy
+deployments
+*.md
+LICENSE
+Makefile
+.github
+.gitignore
+.dockerignore
+.golangci.yml
+bin

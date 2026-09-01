@@ -14,9 +14,8 @@ const defaultNodePath = "/sys/devices/system/node"
 type NUMAMap map[int]int
 
 // LookupNUMA reads /sys/devices/system/node/nodeN/cpulist to build a mapping
-// of CPU core indices to NUMA node IDs. Returns an error if the sysfs path
-// is not available. Falls back to NUMA node 0 for all cores if sysfs is
-// not accessible (e.g., in containers without host sysfs mounted).
+// of CPU core indices to NUMA node IDs. Returns an error if sysfs is not
+// accessible. The caller uses -1 as the NUMA node ID when lookup fails.
 func LookupNUMA(sysfsNodePath string) (NUMAMap, error) {
 	if sysfsNodePath == "" {
 		sysfsNodePath = defaultNodePath
