@@ -130,16 +130,19 @@ func InstallHookBinary(hostPluginDir string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("opening self binary: %w", err)
 	}
-	defer srcFile.Close()
+	defer func() { _ = srcFile.Close() }()
 
 	dstFile, err := os.OpenFile(hookPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0755)
 	if err != nil {
 		return "", fmt.Errorf("creating hook binary: %w", err)
 	}
-	defer dstFile.Close()
 
 	if _, err := io.Copy(dstFile, srcFile); err != nil {
+		_ = dstFile.Close()
 		return "", fmt.Errorf("writing hook binary: %w", err)
+	}
+	if err := dstFile.Close(); err != nil {
+		return "", fmt.Errorf("finalizing hook binary: %w", err)
 	}
 
 	klog.InfoS("Installed hook binary", "path", hookPath)

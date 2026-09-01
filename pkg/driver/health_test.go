@@ -32,7 +32,7 @@ func TestHealthServerReadiness(t *testing.T) {
 	for time.Now().Before(deadline) {
 		resp, err := http.Get(baseURL + "/healthz")
 		if err == nil {
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			break
 		}
 		time.Sleep(20 * time.Millisecond)
@@ -43,7 +43,7 @@ func TestHealthServerReadiness(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GET /healthz failed: %v", err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("/healthz status = %d, want 200", resp.StatusCode)
 	}
@@ -53,7 +53,7 @@ func TestHealthServerReadiness(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GET /readyz failed: %v", err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusServiceUnavailable {
 		t.Errorf("/readyz before MarkReady: status = %d, want 503", resp.StatusCode)
 	}
@@ -66,7 +66,7 @@ func TestHealthServerReadiness(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GET /readyz failed: %v", err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("/readyz after MarkReady: status = %d, want 200", resp.StatusCode)
 	}
