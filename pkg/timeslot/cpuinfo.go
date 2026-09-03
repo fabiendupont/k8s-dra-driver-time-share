@@ -1,0 +1,199 @@
+package timeslot
+
+import (
+	"bufio"
+	"fmt"
+	"os"
+	"path/filepath"
+	"sort"
+	"strconv"
+	"strings"
+)
+
+const defaultCPUPath = "/sys/devices/system/cpu"
+
+// DefaultFeatureAllowlist is the default set of CPU flags published as device
+// attributes. Override with NodeConfig.FeatureAllowlist. An empty allowlist
+// disables feature discovery. Entries must match /proc/cpuinfo flag names.
+var DefaultFeatureAllowlist = []string{
+	"aes",
+	"amx_bf16",
+	"amx_int8",
+	"amx_tile",
+	"avx",
+	"avx2",
+	"avx512bw",
+	"avx512f",
+	"avx512vl",
+	"avx512_vnni",
+	"f16c",
+	"fma",
+	"sha_ni",
+	"sse4_1",
+	"sse4_2",
+	"ssse3",
+}
+
+// CoreInfo holds per-core attributes discovered from sysfs and /proc/cpuinfo.
+type CoreInfo struct {
+	CpufreqGovernor   string
+	CpufreqBaseKhz    int64
+	PhysicalPackageID int
+	Features          []string
+}
+
+// FeaturesString returns the core's discovered features as a
+// comma-separated string suitable for a DRA DeviceAttribute.
+func (ci *CoreInfo) FeaturesString() string {
+	return strings.Join(ci.Features, ",")
+}
+
+// CPUInfoMap maps CPU core index to CoreInfo.
+type CPUInfoMap map[int]*CoreInfo
+
+// LookupCPUInfo reads sysfs and /proc/cpuinfo to build per-core attribute
+// maps. Only features present in allowlist are retained; pass nil to use
+// DefaultFeatureAllowlist. sysfsCPUPath and procCPUInfoPath override the
+// default system paths when non-empty (for testing).
+func LookupCPUInfo(sysfsCPUPath, procCPUInfoPath string, allowlist []string) (CPUInfoMap, error) {
+	if sysfsCPUPath == "" {
+		sysfsCPUPath = defaultCPUPath
+	}
+	if procCPUInfoPath == "" {
+		procCPUInfoPath = "/proc/cpuinfo"
+	}
+	if allowlist == nil {
+		allowlist = DefaultFeatureAllowlist
+	}
+
+	allowed := make(map[string]bool, len(allowlist))
+	for _, f := range allowlist {
+		allowed[f] = true
+	}
+
+	infoMap := make(CPUInfoMap)
+
+	if err := readSysfsCPUInfo(sysfsCPUPath, infoMap); err != nil {
+		return nil, err
+	}
+
+	readProcCPUInfo(procCPUInfoPath, infoMap, allowed)
+
+	if len(infoMap) == 0 {
+		return nil, fmt.Errorf("no CPU information found")
+	}
+
+	return infoMap, nil
+}
+
+func readSysfsCPUInfo(sysfsCPUPath string, infoMap CPUInfoMap) error {
+	entries, err := os.ReadDir(sysfsCPUPath)
+	if err != nil {
+		return fmt.Errorf("reading %s: %w", sysfsCPUPath, err)
+	}
+
+	for _, entry := range entries {
+		if !entry.IsDir() || !strings.HasPrefix(entry.Name(), "cpu") {
+			continue
+		}
+
+		cpuIDStr := strings.TrimPrefix(entry.Name(), "cpu")
+		cpuID, err := strconv.Atoi(cpuIDStr)
+		if err != nil {
+			continue
+		}
+
+		info := &CoreInfo{PhysicalPackageID: -1, CpufreqBaseKhz: -1}
+		cpuDir := filepath.Join(sysfsCPUPath, entry.Name())
+
+		info.CpufreqGovernor = readFileString(filepath.Join(cpuDir, "cpufreq", "scaling_governor"))
+		info.CpufreqBaseKhz = readFileInt64(filepath.Join(cpuDir, "cpufreq", "base_frequency"))
+		if info.CpufreqBaseKhz < 0 {
+			info.CpufreqBaseKhz = readFileInt64(filepath.Join(cpuDir, "cpufreq", "cpuinfo_min_freq"))
+		}
+		info.PhysicalPackageID = int(readFileInt64(filepath.Join(cpuDir, "topology", "physical_package_id")))
+
+		infoMap[cpuID] = info
+	}
+
+	return nil
+}
+
+func readProcCPUInfo(procPath string, infoMap CPUInfoMap, allowed map[string]bool) {
+	f, err := os.Open(procPath)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+
+	scanner := bufio.NewScanner(f)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	cpuID := -1
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.HasPrefix(line, "processor") {
+			parts := strings.SplitN(line, ":", 2)
+			if len(parts) == 2 {
+				if id, err := strconv.Atoi(strings.TrimSpace(parts[1])); err == nil {
+					cpuID = id
+				}
+			}
+			continue
+		}
+		if cpuID < 0 {
+			continue
+		}
+		if strings.HasPrefix(line, "flags") {
+			parts := strings.SplitN(line, ":", 2)
+			if len(parts) != 2 {
+				continue
+			}
+			features := filterFeatures(strings.TrimSpace(parts[1]), allowed)
+
+			if info, ok := infoMap[cpuID]; ok {
+				info.Features = features
+			} else {
+				infoMap[cpuID] = &CoreInfo{
+					PhysicalPackageID: -1,
+					CpufreqBaseKhz:    -1,
+					Features:          features,
+				}
+			}
+			cpuID = -1
+		}
+	}
+}
+
+func filterFeatures(flagsLine string, allowed map[string]bool) []string {
+	if len(allowed) == 0 {
+		return nil
+	}
+	var features []string
+	for _, flag := range strings.Fields(flagsLine) {
+		if allowed[flag] {
+			features = append(features, flag)
+		}
+	}
+	sort.Strings(features)
+	return features
+}
+
+func readFileString(path string) string {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(data))
+}
+
+func readFileInt64(path string) int64 {
+	s := readFileString(path)
+	if s == "" {
+		return -1
+	}
+	v, err := strconv.ParseInt(s, 10, 64)
+	if err != nil {
+		return -1
+	}
+	return v
+}

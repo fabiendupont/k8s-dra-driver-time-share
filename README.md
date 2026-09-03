@@ -104,6 +104,8 @@ Edit the DaemonSet args to match your hardware:
 | `--period-ms` | `1` | Scheduling period in milliseconds |
 | `--slot-count` | `4` | Number of time slots per core |
 | `--socket` | `/var/lib/kubelet/plugins/time-share.fabiendupont.io/plugin.sock` | DRA plugin socket path |
+| `--cdi-dir` | `/var/run/cdi` | Directory for CDI spec files |
+| `--cpu-features` | (empty) | Comma-separated allowlist of CPU flags to publish (empty = default set, `none` = disabled) |
 | `--health-port` | `8080` | Port for health (`/healthz`, `/readyz`) and metrics (`/metrics`) endpoints |
 | `--registry-dir` | `/var/lib/kubelet/plugins_registry` | Kubelet plugin registry directory |
 
@@ -143,6 +145,10 @@ All attributes are in the `time-share.fabiendupont.io` domain. Access them in CE
 | `periodNs` | int | Scheduling period (nanoseconds) |
 | `utilizationMillis` | int | CPU utilization in tenths of a percent (250 = 25.0%) |
 | `numaNode` | int | NUMA node ID for this slot's core (-1 if unavailable) |
+| `cpufreqGovernor` | string | cpufreq scaling governor (e.g. `performance`); omitted if unavailable |
+| `cpufreqBaseKhz` | int | Base CPU frequency in KHz; omitted if unavailable |
+| `physicalPackageId` | int | CPU socket number; omitted if unavailable |
+| `cpuFeatures` | string | Sorted, comma-separated CPU flags matching the allowlist; omitted if empty |
 
 ### Reference the claim from a Pod
 

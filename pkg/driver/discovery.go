@@ -82,31 +82,53 @@ func (sp *SlicePublisher) buildDevices(partitions []*timeslot.CorePartition) []r
 	devices := make([]resourceapi.Device, 0, len(allSlots))
 
 	for _, slot := range allSlots {
-		dev := resourceapi.Device{
-			Name: slot.ID,
-			Attributes: map[resourceapi.QualifiedName]resourceapi.DeviceAttribute{
-				"core": {
-					IntValue: int64Ptr(int64(slot.Core)),
-				},
-				"slotIndex": {
-					IntValue: int64Ptr(int64(slot.Index)),
-				},
-				"offsetNs": {
-					IntValue: int64Ptr(slot.Offset.Nanoseconds()),
-				},
-				"runtimeNs": {
-					IntValue: int64Ptr(slot.Runtime.Nanoseconds()),
-				},
-				"periodNs": {
-					IntValue: int64Ptr(slot.Period.Nanoseconds()),
-				},
-				"utilizationMillis": {
-					IntValue: int64Ptr(slot.UtilizationMillis()),
-				},
-				"numaNode": {
-					IntValue: int64Ptr(int64(slot.NUMANode)),
-				},
+		attrs := map[resourceapi.QualifiedName]resourceapi.DeviceAttribute{
+			"core": {
+				IntValue: int64Ptr(int64(slot.Core)),
 			},
+			"slotIndex": {
+				IntValue: int64Ptr(int64(slot.Index)),
+			},
+			"offsetNs": {
+				IntValue: int64Ptr(slot.Offset.Nanoseconds()),
+			},
+			"runtimeNs": {
+				IntValue: int64Ptr(slot.Runtime.Nanoseconds()),
+			},
+			"periodNs": {
+				IntValue: int64Ptr(slot.Period.Nanoseconds()),
+			},
+			"utilizationMillis": {
+				IntValue: int64Ptr(slot.UtilizationMillis()),
+			},
+			"numaNode": {
+				IntValue: int64Ptr(int64(slot.NUMANode)),
+			},
+		}
+		if slot.CpufreqGovernor != "" {
+			attrs["cpufreqGovernor"] = resourceapi.DeviceAttribute{
+				StringValue: stringPtr(slot.CpufreqGovernor),
+			}
+		}
+		if slot.CpufreqBaseKhz >= 0 {
+			attrs["cpufreqBaseKhz"] = resourceapi.DeviceAttribute{
+				IntValue: int64Ptr(slot.CpufreqBaseKhz),
+			}
+		}
+		if slot.PhysicalPackageID >= 0 {
+			attrs["physicalPackageId"] = resourceapi.DeviceAttribute{
+				IntValue: int64Ptr(int64(slot.PhysicalPackageID)),
+			}
+		}
+		if slot.Features != "" {
+			attrs["cpuFeatures"] = resourceapi.DeviceAttribute{
+				StringValue: stringPtr(slot.Features),
+			}
+		}
+
+		dev := resourceapi.Device{
+			Name:       slot.ID,
+			Attributes: attrs,
 		}
 		devices = append(devices, dev)
 	}
@@ -148,5 +170,9 @@ func (sp *SlicePublisher) nodeOwnerReference(ctx context.Context) ([]metav1.Owne
 }
 
 func int64Ptr(v int64) *int64 {
+	return &v
+}
+
+func stringPtr(v string) *string {
 	return &v
 }

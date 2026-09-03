@@ -30,6 +30,19 @@ type TimeSlot struct {
 	// NUMANode is the NUMA node ID for this slot's core.
 	// Set to -1 if NUMA information is not available.
 	NUMANode int
+
+	// CpufreqGovernor is the cpufreq scaling governor (e.g. "performance").
+	CpufreqGovernor string
+
+	// CpufreqBaseKhz is the base CPU frequency in KHz. -1 if unavailable.
+	CpufreqBaseKhz int64
+
+	// PhysicalPackageID is the CPU socket number. -1 if unavailable.
+	PhysicalPackageID int
+
+	// Features is the sorted, comma-separated list of CPU flags present
+	// on this core and matching the configured allowlist.
+	Features string
 }
 
 // Utilization returns the CPU utilization as a fraction (0.0 to 1.0).
@@ -65,4 +78,9 @@ type NodeConfig struct {
 
 	// SlotCount is the number of equal time slots per core.
 	SlotCount int
+
+	// FeatureAllowlist is the set of /proc/cpuinfo flags to publish as
+	// device attributes. Nil uses DefaultFeatureAllowlist; an empty
+	// slice disables feature discovery.
+	FeatureAllowlist []string
 }

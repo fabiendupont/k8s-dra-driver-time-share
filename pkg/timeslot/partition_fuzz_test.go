@@ -32,7 +32,7 @@ func FuzzPartitionCore(f *testing.F) {
 			t.Skip() // runtime would be zero
 		}
 
-		p, err := PartitionCore(core, period, slotCount, 0)
+		p, err := PartitionCore(core, period, slotCount, 0, nil)
 		if err != nil {
 			// PartitionCore legitimately rejects some inputs.
 			t.Skip()

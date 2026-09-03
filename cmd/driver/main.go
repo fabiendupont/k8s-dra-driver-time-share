@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -44,6 +45,7 @@ func main() {
 		slotCount   int
 		healthPort  int
 		cdiDir      string
+		cpuFeatures string
 	)
 
 	flag.StringVar(&socketPath, "socket", "/var/lib/kubelet/plugins/time-share.fabiendupont.io/plugin.sock", "DRA plugin gRPC socket path")
@@ -54,6 +56,7 @@ func main() {
 	flag.IntVar(&slotCount, "slot-count", 4, "Number of time slots per core")
 	flag.IntVar(&healthPort, "health-port", 8080, "Port for health check endpoints (/healthz, /readyz)")
 	flag.StringVar(&cdiDir, "cdi-dir", "/var/run/cdi", "Directory for CDI spec files")
+	flag.StringVar(&cpuFeatures, "cpu-features", "", "Comma-separated allowlist of CPU flags to publish (empty = default set, 'none' = disabled)")
 
 	klog.InitFlags(nil)
 	flag.Parse()
@@ -71,9 +74,10 @@ func main() {
 	}
 
 	cfg := &timeslot.NodeConfig{
-		Cores:     coreList,
-		Period:    time.Duration(periodMs) * time.Millisecond,
-		SlotCount: slotCount,
+		Cores:            coreList,
+		Period:           time.Duration(periodMs) * time.Millisecond,
+		SlotCount:        slotCount,
+		FeatureAllowlist: parseFeatureAllowlist(cpuFeatures),
 	}
 
 	partitions, err := timeslot.PartitionNode(cfg)
@@ -219,6 +223,26 @@ func parseCores(s string) ([]int, error) {
 		}
 	}
 	return cores, nil
+}
+
+// parseFeatureAllowlist converts the --cpu-features flag value.
+// Empty string returns nil (use default). "none" returns an empty slice
+// (disables feature discovery). Otherwise splits on commas.
+func parseFeatureAllowlist(s string) []string {
+	if s == "" {
+		return nil
+	}
+	if s == "none" {
+		return []string{}
+	}
+	var features []string
+	for _, f := range strings.Split(s, ",") {
+		f = strings.TrimSpace(f)
+		if f != "" {
+			features = append(features, f)
+		}
+	}
+	return features
 }
 
 func buildKubeClient() (kubernetes.Interface, error) {
