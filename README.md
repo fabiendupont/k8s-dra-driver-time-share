@@ -45,6 +45,22 @@ Core 0, period = 1ms, 4 slots:
 
 Use [Node Feature Discovery (NFD)](#node-feature-discovery) to auto-detect compatible nodes and prevent the driver from deploying where enforcement would fail.
 
+### CPU Isolation
+
+`SCHED_DEADLINE` always preempts `SCHED_OTHER` (CFS), so RT containers will never lose CPU time to normal processes. However, during the **slack** interval — the portion of each period when the deadline task is sleeping (`period - runtime`) — the kernel will schedule ordinary tasks onto the same core if their affinity permits it. This causes cache pollution, TLB pressure, and memory bandwidth contention that increases wakeup latency at the start of the next period.
+
+To eliminate this interference, configure the RT cores as **isolated CPUs** at the node level using the standard Linux mechanisms:
+
+- `isolcpus=<cpulist>` — prevents the kernel from placing ordinary tasks on those cores
+- `nohz_full=<cpulist>` — suppresses periodic timer ticks on isolated cores
+- `rcu_nocbs=<cpulist>` — offloads RCU callbacks to housekeeping cores
+
+On **RHEL / OpenShift**, these parameters are set automatically by the [Node Tuning Operator](https://docs.openshift.com/container-platform/latest/scalability_and_performance/low_latency_tuning/cnf-tuning-low-latency-nodes-with-perf-profile.html) when a **PerformanceProfile** is applied. Configure the `--cores` driver flag to match the `isolated` CPU set from the profile; the `reserved` CPUs are left for the OS and Kubernetes housekeeping.
+
+On other platforms, set these kernel parameters manually and pass the same core list to `--cores`.
+
+Without CPU isolation the driver still provides **bandwidth guarantees** (no RT task misses its deadline), but not full **latency isolation** from system noise.
+
 ## Project Layout
 
 ```
