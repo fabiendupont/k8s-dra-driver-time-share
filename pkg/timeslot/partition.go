@@ -26,7 +26,7 @@ func PartitionCore(core int, period time.Duration, slotCount int, numaNode int, 
 	var (
 		governor  string
 		baseKhz   int64 = -1
-		packageID int   = -1
+		packageID = -1
 		features  string
 	)
 	if cpuInfo != nil {
