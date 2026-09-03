@@ -12,6 +12,7 @@ import (
 func SetDeadline(pid int, runtime, deadline, period uint64) error {
 	attr := unix.SchedAttr{
 		Policy:   unix.SCHED_DEADLINE,
+		Flags:    unix.SCHED_FLAG_RESET_ON_FORK,
 		Runtime:  runtime,
 		Deadline: deadline,
 		Period:   period,

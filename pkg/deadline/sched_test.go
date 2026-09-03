@@ -36,6 +36,9 @@ func TestSetAndGetDeadline(t *testing.T) {
 	if attr.Deadline != periodNs {
 		t.Errorf("deadline = %d, want %d", attr.Deadline, periodNs)
 	}
+	if attr.Flags&unix.SCHED_FLAG_RESET_ON_FORK == 0 {
+		t.Errorf("flags = %#x, want SCHED_FLAG_RESET_ON_FORK set", attr.Flags)
+	}
 }
 
 func TestClearDeadline(t *testing.T) {
