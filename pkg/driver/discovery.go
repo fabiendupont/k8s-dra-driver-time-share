@@ -120,6 +120,11 @@ func (sp *SlicePublisher) buildDevices(partitions []*timeslot.CorePartition) []r
 				IntValue: int64Ptr(int64(slot.PhysicalPackageID)),
 			}
 		}
+		if slot.L3CacheID >= 0 {
+			attrs["cacheGroupID"] = resourceapi.DeviceAttribute{
+				IntValue: int64Ptr(int64(slot.L3CacheID)),
+			}
+		}
 		if slot.Features != "" {
 			attrs["cpuFeatures"] = resourceapi.DeviceAttribute{
 				StringValue: stringPtr(slot.Features),

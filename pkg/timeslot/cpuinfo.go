@@ -39,6 +39,7 @@ type CoreInfo struct {
 	CpufreqGovernor   string
 	CpufreqBaseKhz    int64
 	PhysicalPackageID int
+	L3CacheID         int
 	Features          []string
 }
 
@@ -103,7 +104,7 @@ func readSysfsCPUInfo(sysfsCPUPath string, infoMap CPUInfoMap) error {
 			continue
 		}
 
-		info := &CoreInfo{PhysicalPackageID: -1, CpufreqBaseKhz: -1}
+		info := &CoreInfo{PhysicalPackageID: -1, CpufreqBaseKhz: -1, L3CacheID: -1}
 		cpuDir := filepath.Join(sysfsCPUPath, entry.Name())
 
 		info.CpufreqGovernor = readFileString(filepath.Join(cpuDir, "cpufreq", "scaling_governor"))
@@ -112,6 +113,7 @@ func readSysfsCPUInfo(sysfsCPUPath string, infoMap CPUInfoMap) error {
 			info.CpufreqBaseKhz = readFileInt64(filepath.Join(cpuDir, "cpufreq", "cpuinfo_min_freq"))
 		}
 		info.PhysicalPackageID = int(readFileInt64(filepath.Join(cpuDir, "topology", "physical_package_id")))
+		info.L3CacheID = int(readFileInt64(filepath.Join(cpuDir, "cache", "index3", "id")))
 
 		infoMap[cpuID] = info
 	}

@@ -40,6 +40,12 @@ type TimeSlot struct {
 	// PhysicalPackageID is the CPU socket number. -1 if unavailable.
 	PhysicalPackageID int
 
+	// L3CacheID is the L3 cache domain ID for this core, read from
+	// /sys/devices/system/cpu/cpu<N>/cache/index3/id. -1 if unavailable.
+	// Used by the topology coordinator to align co-located resources
+	// (cache partitions, network queues) on the same cache domain.
+	L3CacheID int
+
 	// Features is the sorted, comma-separated list of CPU flags present
 	// on this core and matching the configured allowlist.
 	Features string

@@ -27,12 +27,14 @@ func PartitionCore(core int, period time.Duration, slotCount int, numaNode int, 
 		governor  string
 		baseKhz   int64 = -1
 		packageID = -1
+		l3CacheID = -1
 		features  string
 	)
 	if cpuInfo != nil {
 		governor = cpuInfo.CpufreqGovernor
 		baseKhz = cpuInfo.CpufreqBaseKhz
 		packageID = cpuInfo.PhysicalPackageID
+		l3CacheID = cpuInfo.L3CacheID
 		features = cpuInfo.FeaturesString()
 	}
 
@@ -49,6 +51,7 @@ func PartitionCore(core int, period time.Duration, slotCount int, numaNode int, 
 			CpufreqGovernor:   governor,
 			CpufreqBaseKhz:    baseKhz,
 			PhysicalPackageID: packageID,
+			L3CacheID:         l3CacheID,
 			Features:          features,
 		}
 	}

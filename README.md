@@ -202,6 +202,22 @@ pid <pid>'s current scheduling policy: SCHED_DEADLINE
     runtime/deadline/period parameters: <runtime>/<deadline>/<period>
 ```
 
+## Comparison with dra-driver-cpu
+
+[dra-driver-cpu](https://github.com/kubernetes-sigs/dra-driver-cpu) and this driver solve different problems and are complementary, not competing.
+
+| | dra-driver-cpu | dra-driver-time-share |
+|---|---|---|
+| **Model** | Exclusive CPU allocation | Time-multiplexed CPU bandwidth |
+| **Device unit** | CPU core (or NUMA/socket aggregate) | Time slot (offset + runtime within a period) |
+| **Guarantee** | A core belongs to one workload at a time | A workload gets exactly `runtime` ns per `period` ns |
+| **Sharing** | No — other containers are pushed to a shared pool | Yes — multiple workloads share the same core in non-overlapping slots |
+| **Enforcement** | cpuset cgroup via NRI | `SCHED_DEADLINE` via CDI hook + `sched_setattr(2)` |
+| **Kernel requirement** | Standard | No `CONFIG_RT_GROUP_SCHED` (kernel-rt, Fedora, upstream) |
+| **Target workload** | Any workload needing guaranteed, interference-free CPUs | RT / near-RT workloads needing deterministic CPU bandwidth without owning cores outright |
+
+Use **dra-driver-cpu** when workloads must not share cores at all. Use **dra-driver-time-share** when you need deterministic scheduling budgets and want to pack multiple latency-sensitive workloads onto the same hardware. The two drivers can coexist on the same node, managing disjoint sets of cores.
+
 ## Architecture
 
 ```
