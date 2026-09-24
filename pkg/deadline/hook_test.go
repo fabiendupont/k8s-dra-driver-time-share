@@ -5,6 +5,42 @@ import (
 	"testing"
 )
 
+func TestRunCDIHookArgValidation(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    []string
+		wantErr string
+	}{
+		{
+			name:    "missing runtime-ns and period-ns",
+			args:    []string{"--core=0"},
+			wantErr: "--runtime-ns and --period-ns are required",
+		},
+		{
+			name:    "missing period-ns",
+			args:    []string{"--core=0", "--runtime-ns=1000000"},
+			wantErr: "--runtime-ns and --period-ns are required",
+		},
+		{
+			name:    "invalid core value",
+			args:    []string{"--core=notanumber", "--runtime-ns=1000000", "--period-ns=4000000"},
+			wantErr: "invalid argument",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := RunCDIHook(tt.args)
+			if err == nil {
+				t.Fatal("expected error, got nil")
+			}
+			if !strings.Contains(err.Error(), tt.wantErr) {
+				t.Errorf("error %q does not contain %q", err.Error(), tt.wantErr)
+			}
+		})
+	}
+}
+
 func TestReadOCIState(t *testing.T) {
 	tests := []struct {
 		name    string

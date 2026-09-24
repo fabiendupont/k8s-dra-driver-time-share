@@ -18,6 +18,10 @@ type OCIState struct {
 // from stdin to get the container PID, then applies sched_setaffinity and
 // sched_setattr(SCHED_DEADLINE) on that PID.
 //
+// Runs as a poststart OCI hook so it fires after exec() and after CRI-O's
+// execCPUAffinity, ensuring the single-core pin wins over any cpuset-wide
+// affinity applied earlier by the runtime.
+//
 // Args: --cdi-hook --core=N --runtime-ns=R --period-ns=P
 //
 // The hook runs as a host process invoked by CRI-O during container creation.

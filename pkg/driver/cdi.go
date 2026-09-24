@@ -71,7 +71,9 @@ func WriteCDISpecs(cdiDir, hookBinaryPath string, partitions []*timeslot.CorePar
 					},
 					Hooks: []CDIHook{
 						{
-							HookName: "createRuntime",
+							// poststart fires after exec() and after CRI-O's execCPUAffinity,
+							// ensuring the single-core pin wins over any cpuset-wide affinity.
+							HookName: "poststart",
 							Path:     hookBinaryPath,
 							Args: []string{
 								hookBinaryPath,
