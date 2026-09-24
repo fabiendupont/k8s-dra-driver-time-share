@@ -20,7 +20,7 @@ Core 0, period = 1ms, 4 slots:
 
 3. **Allocate** — The Kubernetes scheduler picks a slot for each ResourceClaim. When the pod starts, kubelet calls `NodePrepareResources` and the driver records the allocation, returning CDI device IDs.
 
-4. **Enforce** — At container creation, CRI-O reads the CDI spec and executes a `createRuntime` hook. The hook pins the container's init process to the slot's core via `sched_setaffinity(2)` and applies `SCHED_DEADLINE` via `sched_setattr(2)`. Enforcement happens before the container's entrypoint runs.
+4. **Enforce** — After the container process starts, CRI-O reads the CDI spec and executes a `poststart` hook. The hook pins the container process to the slot's core via `sched_setaffinity(2)` and applies `SCHED_DEADLINE` via `sched_setattr(2)`. Using `poststart` ensures the hook fires after the container's entrypoint has been exec'd and after CRI-O's own `execCPUAffinity` step, so the single-core pin is not overwritten by the runtime.
 
 5. **Release** — When the pod is deleted or the claim is released, `NodeUnprepareResources` frees the slot for reuse.
 
@@ -222,44 +222,44 @@ Use **dra-driver-cpu** when workloads must not share cores at all. Use **dra-dri
 
 ```
                          ┌─────────────────────────────┐
-                         │        kube-scheduler        │
-                         │  allocates slots from        │
-                         │  ResourceSlice devices       │
+                         │        kube-scheduler       │
+                         │  allocates slots from       │
+                         │  ResourceSlice devices      │
                          └──────────────┬──────────────┘
                                         │
-┌───────────────────────────────────────┼───────────────────────────────────┐
-│ Node                                  │                                   │
-│                                       │                                   │
-│  ┌────────────────────────────────────▼──────────────────────────────┐    │
-│  │                          kubelet                                  │    │
-│  │  NodePrepareResources ──► driver records allocation               │    │
-│  │                           returns CDI device IDs                  │    │
-│  │                                                                   │    │
-│  │  Container creation ──► CRI-O reads CDI spec                      │    │
-│  │                          executes createRuntime hook              │    │
-│  │                          ──► hook applies                         │    │
-│  │                               sched_setaffinity + sched_setattr   │    │
-│  │                                                                   │    │
-│  │  NodeUnprepareResources ► driver releases slot                    │    │
-│  └───────────────────────────────────────────────────────────────────┘    │
-│                                                                           │
-│  ┌──────────────┐   ┌──────────────┐   ┌──────────────┐                  │
-│  │ Allocation   │   │    Slice     │   │  CDI Specs   │                  │
-│  │   State      │   │  Publisher   │   │  (/var/run/  │                  │
-│  │              │   │              │   │   cdi/)      │                  │
-│  │ slot→claim   │   │ ResourceSlice│   │              │                  │
-│  │  mapping     │   │  with all    │   │ createRuntime│                  │
-│  │              │   │  devices     │   │  hooks per   │                  │
-│  │              │   │  + numaNode  │   │  slot        │                  │
-│  └──────────────┘   └──────────────┘   └──────────────┘                  │
-└───────────────────────────────────────────────────────────────────────────┘
+┌───────────────────────────────────────┼─────────────────────────────────┐
+│ Node                                  │                                 │
+│                                       │                                 │
+│  ┌────────────────────────────────────▼──────────────────────────────┐  │
+│  │                          kubelet                                  │  │
+│  │  NodePrepareResources ──► driver records allocation               │  │
+│  │                           returns CDI device IDs                  │  │
+│  │                                                                   │  │
+│  │  Container creation ──► CRI-O reads CDI spec                      │  │
+│  │                          executes poststart hook (after exec)     │  │
+│  │                          ──► hook applies                         │  │
+│  │                               sched_setaffinity + sched_setattr   │  │
+│  │                                                                   │  │
+│  │  NodeUnprepareResources ► driver releases slot                    │  │
+│  └───────────────────────────────────────────────────────────────────┘  │
+│                                                                         │
+│  ┌──────────────┐   ┌──────────────┐   ┌──────────────┐                 │
+│  │ Allocation   │   │    Slice     │   │  CDI Specs   │                 │
+│  │   State      │   │  Publisher   │   │  (/var/run/  │                 │
+│  │              │   │              │   │   cdi/)      │                 │
+│  │ slot→claim   │   │ ResourceSlice│   │              │                 │
+│  │  mapping     │   │  with all    │   │  poststart   │                 │
+│  │              │   │  devices     │   │  hooks per   │                 │
+│  │              │   │  + numaNode  │   │  slot        │                 │
+│  └──────────────┘   └──────────────┘   └──────────────┘                 │
+└─────────────────────────────────────────────────────────────────────────┘
 ```
 
 ### CDI Hook Enforcement
 
 The `dra-time-share` binary doubles as the CDI hook entry point. When invoked with `--cdi-hook`, it reads the container PID from the OCI state on stdin and calls `sched_setaffinity` + `sched_setattr` directly via Go syscalls. No external helper binaries are needed.
 
-The hook runs as a host process invoked by CRI-O during `createRuntime`, before the container's entrypoint executes. This ensures the process starts under `SCHED_DEADLINE` from the first instruction.
+The hook runs as a `poststart` OCI hook, which fires after the container's entrypoint has been exec'd and is running. This ordering is deliberate: on OCP 4.22+ nodes with a PerformanceProfile, CRI-O's `execCPUAffinity` feature applies `sched_setaffinity` to the container process at exec time, pinning it to the full CPU Manager cpuset. By running as `poststart` — after exec and after `execCPUAffinity` — the hook's single-core pin always wins.
 
 ### Recovery
 
