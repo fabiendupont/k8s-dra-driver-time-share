@@ -162,7 +162,7 @@ func TestLookupCPUInfoDefaultAllowlist(t *testing.T) {
 	procPath := filepath.Join(tmpDir, "cpuinfo")
 	_ = os.WriteFile(procPath, []byte(
 		"processor\t: 0\n"+
-			"flags\t\t: fpu vme avx2 bogus_flag_123 aes\n",
+			"flags\t\t: fpu vme avx2 bogus_flag_123 aes avx512f\n",
 	), 0644)
 
 	// nil allowlist = use default.
@@ -174,8 +174,51 @@ func TestLookupCPUInfoDefaultAllowlist(t *testing.T) {
 	if containsFeature(infoMap[0].Features, "bogus_flag_123") {
 		t.Errorf("bogus flag should be filtered out, got %v", infoMap[0].Features)
 	}
-	if !containsFeature(infoMap[0].Features, "avx2") {
-		t.Errorf("avx2 should be present in default allowlist, got %v", infoMap[0].Features)
+	if containsFeature(infoMap[0].Features, "avx2") {
+		t.Errorf("avx2 should be filtered out (not in default allowlist), got %v", infoMap[0].Features)
+	}
+	if !containsFeature(infoMap[0].Features, "aes") {
+		t.Errorf("aes should be present in default allowlist, got %v", infoMap[0].Features)
+	}
+	if !containsFeature(infoMap[0].Features, "avx512f") {
+		t.Errorf("avx512f should be present in default allowlist, got %v", infoMap[0].Features)
+	}
+}
+
+func TestLookupCPUInfoARM64Features(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	cpuDir := filepath.Join(tmpDir, "cpu0")
+	_ = os.MkdirAll(filepath.Join(cpuDir, "cpufreq"), 0755)
+	_ = os.MkdirAll(filepath.Join(cpuDir, "topology"), 0755)
+	_ = os.WriteFile(filepath.Join(cpuDir, "topology", "physical_package_id"), []byte("0\n"), 0644)
+
+	// arm64 uses "Features" (capital F) instead of "flags".
+	procPath := filepath.Join(tmpDir, "cpuinfo")
+	_ = os.WriteFile(procPath, []byte(
+		"processor\t: 0\n"+
+			"Features\t: fp asimd aes pmull sha1 sha2 sve sve2 bf16 i8mm\n",
+	), 0644)
+
+	infoMap, err := LookupCPUInfo(tmpDir, procPath, nil)
+	if err != nil {
+		t.Fatalf("LookupCPUInfo failed: %v", err)
+	}
+
+	if !containsFeature(infoMap[0].Features, "sve") {
+		t.Errorf("sve should be present, got %v", infoMap[0].Features)
+	}
+	if !containsFeature(infoMap[0].Features, "sve2") {
+		t.Errorf("sve2 should be present, got %v", infoMap[0].Features)
+	}
+	if !containsFeature(infoMap[0].Features, "bf16") {
+		t.Errorf("bf16 should be present, got %v", infoMap[0].Features)
+	}
+	if !containsFeature(infoMap[0].Features, "i8mm") {
+		t.Errorf("i8mm should be present, got %v", infoMap[0].Features)
+	}
+	if containsFeature(infoMap[0].Features, "fp") {
+		t.Errorf("fp should be filtered (not in allowlist), got %v", infoMap[0].Features)
 	}
 }
 

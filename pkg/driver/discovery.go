@@ -125,9 +125,9 @@ func (sp *SlicePublisher) buildDevices(partitions []*timeslot.CorePartition) []r
 				IntValue: int64Ptr(int64(slot.L3CacheID)),
 			}
 		}
-		for _, f := range slot.Features {
-			attrs[resourceapi.QualifiedName("feature."+f)] = resourceapi.DeviceAttribute{
-				BoolValue: boolPtr(true),
+		if slot.Features != "" {
+			attrs["cpuFeatures"] = resourceapi.DeviceAttribute{
+				StringValue: stringPtr(slot.Features),
 			}
 		}
 
@@ -175,10 +175,6 @@ func (sp *SlicePublisher) nodeOwnerReference(ctx context.Context) ([]metav1.Owne
 }
 
 func int64Ptr(v int64) *int64 {
-	return &v
-}
-
-func boolPtr(v bool) *bool {
 	return &v
 }
 

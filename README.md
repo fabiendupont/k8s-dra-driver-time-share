@@ -164,7 +164,7 @@ All attributes are in the `time-share.fabiendupont.io` domain. Access them in CE
 | `cpufreqGovernor` | string | cpufreq scaling governor (e.g. `performance`); omitted if unavailable |
 | `cpufreqBaseKhz` | int | Base CPU frequency in KHz; omitted if unavailable |
 | `physicalPackageId` | int | CPU socket number; omitted if unavailable |
-| `feature.<name>` | bool | `true` for each CPU flag matching the allowlist (e.g. `feature.avx512f`); omitted if the flag is absent |
+| `cpuFeatures` | string | Comma-separated CPU flags matching the allowlist (e.g. `"avx512f,avx512vl"`); omitted if none present |
 
 ### Reference the claim from a Pod
 

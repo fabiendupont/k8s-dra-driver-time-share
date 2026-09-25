@@ -15,23 +15,31 @@ const defaultCPUPath = "/sys/devices/system/cpu"
 // DefaultFeatureAllowlist is the default set of CPU flags published as device
 // attributes. Override with NodeConfig.FeatureAllowlist. An empty allowlist
 // disables feature discovery. Entries must match /proc/cpuinfo flag names.
+// DefaultFeatureAllowlist contains only features that are rare enough to be
+// meaningful for workload placement and relevant to SCHED_DEADLINE use cases
+// (RT ML inference, signal processing, crypto offload). Common baseline
+// features present on virtually every modern CPU (avx, avx2, fma, sse4, aes
+// on most x86; neon on all arm64) are omitted — they don't discriminate.
+//
+// x86: AMX (Sapphire Rapids+), AVX-512 variants for DSP/ML, AES-NI for NFV
+// arm64: SVE/SVE2 (server ARM), BF16/I8MM matrix ops, AES hardware
+//
+// The combined worst-case length per architecture stays within the 64-byte
+// DRA string attribute limit (x86: 59 bytes, arm64: 22 bytes).
 var DefaultFeatureAllowlist = []string{
+	// x86
 	"aes",
 	"amx_bf16",
 	"amx_int8",
 	"amx_tile",
-	"avx",
-	"avx2",
-	"avx512bw",
 	"avx512f",
 	"avx512vl",
 	"avx512_vnni",
-	"f16c",
-	"fma",
-	"sha_ni",
-	"sse4_1",
-	"sse4_2",
-	"ssse3",
+	// arm64
+	"bf16",
+	"i8mm",
+	"sve",
+	"sve2",
 }
 
 // CoreInfo holds per-core attributes discovered from sysfs and /proc/cpuinfo.
@@ -145,7 +153,7 @@ func readProcCPUInfo(procPath string, infoMap CPUInfoMap, allowed map[string]boo
 		if cpuID < 0 {
 			continue
 		}
-		if strings.HasPrefix(line, "flags") {
+		if strings.HasPrefix(line, "flags") || strings.HasPrefix(line, "Features") {
 			parts := strings.SplitN(line, ":", 2)
 			if len(parts) != 2 {
 				continue

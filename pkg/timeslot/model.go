@@ -46,10 +46,9 @@ type TimeSlot struct {
 	// (cache partitions, network queues) on the same cache domain.
 	L3CacheID int
 
-	// Features is the sorted list of CPU flags present on this core and
-	// matching the configured allowlist. Published as individual boolean
-	// device attributes (feature.<name>) to avoid DRA's 64-byte string limit.
-	Features []string
+	// Features is the sorted, comma-separated list of CPU flags present
+	// on this core and matching the configured allowlist.
+	Features string
 }
 
 // Utilization returns the CPU utilization as a fraction (0.0 to 1.0).
