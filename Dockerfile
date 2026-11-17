@@ -1,4 +1,4 @@
-FROM registry.access.redhat.com/ubi10/go-toolset:1.26 AS builder
+FROM registry.access.redhat.com/ubi10/go-toolset:10.3 AS builder
 
 COPY go.mod go.sum ./
 RUN go mod download
